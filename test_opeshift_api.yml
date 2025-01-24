@@ -1,0 +1,13 @@
+- name: Test OpenShift API Connection
+  hosts: localhost
+  gather_facts: false
+  tasks:
+    - name: Retrieve OpenShift projects
+      k8s_info:
+        api_version: v1
+        kind: Namespace
+      register: os_projects
+    
+    - name: Display OpenShift projects
+      debug:
+        var: os_projects
