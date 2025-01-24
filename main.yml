@@ -5,5 +5,5 @@
 
   roles:
 #  - {role: ocp_virt.validation}
-    - role: providers
-    - role: virt_plan
+    providers
+    virt_plan
