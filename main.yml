@@ -1,10 +1,9 @@
 ---
 - name: Playbook for OpenShift Virt
   hosts: localhost
-  collections:
-    - ocp_virt
+
 
   roles:
 #  - {role: ocp_virt.validation}
-  - {role: ocp_virt.providers}
-  - {role: ocp_virt.virt_plan}
+    - role: ocp_virt.providers
+    - role: ocp_virt.virt_plan
