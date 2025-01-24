@@ -2,9 +2,9 @@
 - name: Playbook for OpenShift Virt
   hosts: localhost
   collections:
-    - KGSvijay.ocp_virt
+    - ocp_virt
 
   roles:
-#  - {role: rlopez.ocp_virt.validation}
-  - {role: KGSvijay.ocp_virt.providers}
-  - {role: KGSvijay.ocp_virt.virt_plan}
+#  - {role: ocp_virt.validation}
+  - {role: ocp_virt.providers}
+  - {role: ocp_virt.virt_plan}
