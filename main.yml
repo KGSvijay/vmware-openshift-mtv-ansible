@@ -1,6 +1,7 @@
 ---
 - name: Playbook for OpenShift Virt
   hosts: localhost
+  
   roles:
-    providers
-    virt_plan
+    - role: 'ocp_virt/roles/providers'
+    - role: 'ocp_virt/roles/virt_plan'
