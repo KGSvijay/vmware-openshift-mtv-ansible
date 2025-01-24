@@ -1,0 +1,15 @@
+- name: Test VMware Inventory Connection
+  hosts: localhost
+  gather_facts: false
+  tasks:
+    - name: Verify VMware vCenter connection
+      vmware.vmware_rest.vcenter_version:
+        hostname: "https://vcenter.example.com"
+        username: "{{ vcenter_username }}"
+        password: "{{ vcenter_password }}"
+        validate_certs: no
+      register: vmware_info
+
+    - name: Display VMware version info
+      debug:
+        var: vmware_info
