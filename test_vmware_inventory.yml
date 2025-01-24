@@ -4,9 +4,9 @@
   tasks:
     - name: Verify VMware vCenter connection
       vmware.vmware_rest.vcenter_version:
-        hostname: "https://vcenter.example.com"
-        username: "{{ vcenter_username }}"
-        password: "{{ vcenter_password }}"
+        hostname: "https://usddckdbb4567.us.kworld.kpmg.com"
+        username: "us-svcvmwareutil@us.kworld.kpmg.com"
+        password: "+2sIJlGFnis*LWQ3[GNM"
         validate_certs: no
       register: vmware_info
 
