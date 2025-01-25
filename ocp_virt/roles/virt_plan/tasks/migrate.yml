@@ -66,7 +66,7 @@
             name: local-cluster
             namespace: apm0002135-non-prod
           source:
-            name: vmware
+            name: "{{ provider_name }}"
             namespace: apm0002135-non-prod
 
 - name: Build a list of all the datastores
@@ -99,7 +99,7 @@
             name: local-cluster
             namespace: apm0002135-non-prod
           source:
-            name: vmware
+            name: "{{ provider_name }}"
             namespace: apm0002135-non-prod
             
 - name: Deploy Virt Plan
@@ -126,7 +126,7 @@
             name: local-cluster
             namespace: apm0002135-non-prod
           source:
-            name: vmware
+            name: "{{ provider_name }}"
             namespace: apm0002135-non-prod            
         targetNamespace: apm0002135-non-prod
         vms: "{{ vms_for_plan_spec }}"
