@@ -68,7 +68,6 @@
             name: "{{ provider_name }}"
             namespace: apm0002135-non-prod
 
-
 - name: Build a list of all the datastores
   vmware.vmware_rest.vcenter_datastore_info:
   register: all_the_datastores
@@ -99,7 +98,6 @@
           source:
             name: "{{ provider_name }}"
             namespace: apm0002135-non-prod			
-			
 
 - name: Deploy Virt Plan
   redhat.openshift.k8s:
