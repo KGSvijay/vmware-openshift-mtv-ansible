@@ -36,6 +36,14 @@
     loop_var: vm_id
   when: vm_id.name in user_selected_vm_names.split('\n')
 
+- name: Collect all VMs info
+  vmware.vmware_rest.vcenter_vm_info:
+  register: all_vms_info
+
+- name: Create a list of used networks
+  ansible.builtin.set_fact:
+    used_networks: "{{ all_vms_info.value | selectattr('vm', 'in', vm_name_id_pairs | map(attribute='vm')) | map(attribute='nics') | flatten | map(attribute='backing.network') | unique | list }}"
+
 - name: Get information for the networks
   vmware.vmware_rest.vcenter_network_info:
   register: all_networks
@@ -44,10 +52,10 @@
   ansible.builtin.set_fact:
     network_mappings: []
 
-- name: Append network mappings
+- name: Append only used network mappings
   ansible.builtin.set_fact:
     network_mappings: "{{ network_mappings + [{'source': {'id': network.network}, 'destination': {'type': 'pod'}}] }}"
-  loop: "{{ all_networks.value }}"
+  loop: "{{ all_networks.value | selectattr('network', 'in', used_networks) }}"
   loop_control:
     loop_var: network
 
@@ -70,6 +78,10 @@
             name: "{{ provider_name }}"
             namespace: apm0002135-non-prod
 
+- name: Create a list of used datastores
+  ansible.builtin.set_fact:
+    used_datastores: "{{ all_vms_info.value | selectattr('vm', 'in', vm_name_id_pairs | map(attribute='vm')) | map(attribute='disks') | flatten | map(attribute='backing.datastore') | unique | list }}"
+
 - name: Build a list of all the datastores
   vmware.vmware_rest.vcenter_datastore_info:
   register: all_the_datastores
@@ -78,10 +90,10 @@
   ansible.builtin.set_fact:
     datastore_mappings: []
 
-- name: Append datastore mappings
+- name: Append only used datastore mappings
   ansible.builtin.set_fact:
     datastore_mappings: "{{ datastore_mappings + [{'source': {'id': datastore.datastore}, 'destination': {'storageClass': 'portworx-rwx-kubevirt'}}] }}"
-  loop: "{{ all_the_datastores.value }}"
+  loop: "{{ all_the_datastores.value | selectattr('datastore', 'in', used_datastores) }}"
   loop_control:
     loop_var: datastore
 
@@ -103,6 +115,18 @@
           source:
             name: "{{ provider_name }}"
             namespace: apm0002135-non-prod
+
+- name: Check if VMs already exist in the target cluster and namespace
+  community.kubernetes.k8s_info:
+    kind: VirtualMachine
+    namespace: apm0002135-non-prod
+  register: existing_vms
+
+- name: Ensure the VM does not already exist in the target namespace
+  fail:
+    msg: "VM {{ item.id }} already exists in the target namespace apm0002135-non-prod"
+  loop: "{{ vms_for_plan_spec }}"
+  when: item.id in existing_vms.resources | map(attribute='metadata.name') | list
 
 - name: Deploy Virt Plan
   redhat.openshift.k8s:
@@ -132,7 +156,7 @@
             namespace: apm0002135-non-prod
         targetNamespace: apm0002135-non-prod
         vms: "{{ vms_for_plan_spec }}"
-        warm: "{{ migration_type == 'warm' }}"
+        warm: "{{ (migration_type | default('cold')) == 'warm' }}"
 
 - name: Create a Migration manifest to run the Plan CR
   redhat.openshift.k8s:
