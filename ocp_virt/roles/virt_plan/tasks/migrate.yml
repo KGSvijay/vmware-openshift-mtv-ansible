@@ -13,18 +13,21 @@
 - name: Filter folders that contain user-selected VMs
   vmware.vmware_rest.vcenter_vm_info:
     folders: "{{ item.folder }}"
-  register: vm_folders_with_vms
+  register: vm_info_results
   loop: "{{ vm_folders }}"
   when: vm_folders | length > 0
+
+- name: Ensure vm_info_results is populated
+  ansible.builtin.debug:
+    msg: "{{ vm_info_results}}"
 
 - name: Collect VM names and IDs of user-selected VMs
   ansible.builtin.set_fact:
     vm_name_id_pairs: "{{ vm_name_id_pairs | default([]) + [{'name': vm.name, 'vm': vm.vm}] }}"
-  loop: "{{ vm_folders_with_vms.results | map(attribute='value') | flatten }}"
-  vars:
-    selected_vms: "{{ item | selectattr('name', 'in', user_selected_vm_list) | list }}"
-  when: selected_vms | length > 0
-  with_items: "{{ vm_folders_with_vms.results | map(attribute='value') | flatten }}"
+  loop: "{{ vm_info_results.results | map(attribute='value') | flatten }}"
+  loop_control:
+    loop_var: vm
+  when: vm.name in user_selected_vm_list
 
 - name: Prepare VMs for Plan spec
   ansible.builtin.set_fact:
