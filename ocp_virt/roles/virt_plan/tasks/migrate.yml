@@ -105,7 +105,7 @@
             namespace: apm0002135-non-prod
 
 - name: Check if VMs already exist in the target cluster and namespace
-  redhat.openshift.k8s_info:
+  community.kubernetes.k8s_info:
     kind: VirtualMachine
     namespace: apm0002135-non-prod
   register: existing_vms
