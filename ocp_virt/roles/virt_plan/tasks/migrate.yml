@@ -55,7 +55,11 @@
         name: "{{ networkmap_name }}"
         namespace: apm0002135-non-prod
       spec:
-        map: "{{ network_mappings }}"
+        map:
+          - destination:
+              type: pod
+            source:
+              id: "{{ portgroup_id }}"
         provider:
           destination:
             name: local-cluster
@@ -83,14 +87,19 @@
         name: "{{ storagemap_name }}"
         namespace: apm0002135-non-prod
       spec:
-        map: "{{ datastore_mappings }}"
+        map:
+          - destination:
+              storageClass: portworx-rwx-kubevirt
+            source:
+              id: "{{ datastore_id }}"
         provider:
           destination:
-            name: local-cluster
+            name:  local-cluster
             namespace: apm0002135-non-prod
           source:
             name: "{{ provider_name }}"
-            namespace: apm0002135-non-prod
+            namespace: apm0002135-non-prod			
+			
 
 - name: Deploy Virt Plan
   redhat.openshift.k8s:
