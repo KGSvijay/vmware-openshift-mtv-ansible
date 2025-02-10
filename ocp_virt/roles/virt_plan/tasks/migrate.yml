@@ -116,18 +116,6 @@
             name: "{{ provider_name }}"
             namespace: apm0002135-non-prod
 
-- name: Check if VMs already exist in the target cluster and namespace
-  community.kubernetes.k8s_info:
-    kind: VirtualMachine
-    namespace: apm0002135-non-prod
-  register: existing_vms
-
-- name: Ensure the VM does not already exist in the target namespace
-  fail:
-    msg: "VM {{ item.id }} already exists in the target namespace apm0002135-non-prod"
-  loop: "{{ vms_for_plan_spec }}"
-  when: item.id in existing_vms.resources | map(attribute='metadata.name') | list
-
 - name: Deploy Virt Plan
   redhat.openshift.k8s:
     state: present
