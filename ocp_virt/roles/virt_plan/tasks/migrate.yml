@@ -41,7 +41,7 @@
   register: my_portgroup
 
 - name: Capture the distrivuted portgroup id to make network mappings
-  ansible.builtin.set_fact: 
+  ansible.builtin.set_fact:
     portgroup_id: "{{ my_portgroup.value[0].network }}"
 
 - name: Create or update a NetworkMap
@@ -92,11 +92,11 @@
               id: "{{ datastore_id }}"
         provider:
           destination:
-            name:  local-cluster
+            name: local-cluster
             namespace: apm0002135-non-prod
           source:
             name: "{{ provider_name }}"
-            namespace: apm0002135-non-prod			
+            namespace: apm0002135-non-prod
 
 - name: Deploy Virt Plan
   redhat.openshift.k8s:
@@ -126,11 +126,10 @@
             namespace: apm0002135-non-prod
         targetNamespace: apm0002135-non-prod
         vms: "{{ vms_for_plan_spec }}"
-        warm: "{{ (migration_type | default('cold')) == 'warm' }}"
+        warm: false
 
 - name: Create a Migration manifest to run the Plan CR
   redhat.openshift.k8s:
-    state: present
     api_version: forklift.konveyor.io/v1beta1
     kind: Migration
     namespace: apm0002135-non-prod
