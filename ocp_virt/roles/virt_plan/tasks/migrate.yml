@@ -6,26 +6,25 @@
   ansible.builtin.set_fact:
     vm_folders: "{{ all_folders.value | selectattr('type', 'equalto', 'VIRTUAL_MACHINE') | list }}"
 
-- name: Check each VM folder for VMs
+- name: Convert user-selected VM names to list
+  ansible.builtin.set_fact:
+    user_selected_vm_list: "{{ user_selected_vm_names.split('\n') }}"
+
+- name: Filter folders that contain user-selected VMs
   vmware.vmware_rest.vcenter_vm_info:
     folders: "{{ item.folder }}"
   register: vm_folders_with_vms
   loop: "{{ vm_folders }}"
   when: vm_folders | length > 0
 
-- name: Display VM names and IDs
-  ansible.builtin.debug:
-    msg: "VM Name: {{ item.name }}, VM ID: {{ item.vm }}"
-  loop: "{{ vm_folders_with_vms.results | map(attribute='value') | flatten }}"
-  when: item | length > 0
-  loop_control:
-    label: "{{ item.name }}"
-
-- name: Collect VM names and IDs
+- name: Collect VM names and IDs of user-selected VMs
   ansible.builtin.set_fact:
-    vm_name_id_pairs: "{{ vm_name_id_pairs | default([]) + [{'name': item.name, 'vm': item.vm}] }}"
+    vm_name_id_pairs: "{{ vm_name_id_pairs | default([]) + [{'name': vm.name, 'vm': vm.vm}] }}"
   loop: "{{ vm_folders_with_vms.results | map(attribute='value') | flatten }}"
-  when: item | length > 0
+  vars:
+    selected_vms: "{{ item | selectattr('name', 'in', user_selected_vm_list) | list }}"
+  when: selected_vms | length > 0
+  with_items: "{{ vm_folders_with_vms.results | map(attribute='value') | flatten }}"
 
 - name: Prepare VMs for Plan spec
   ansible.builtin.set_fact:
@@ -33,16 +32,19 @@
   loop: "{{ vm_name_id_pairs }}"
   loop_control:
     loop_var: vm_id
-  when: vm_id.name in user_selected_vm_names.split('\n')
 
 - name: Get information for the distributed port group 'segment-migrating-to-ocpvirt'
   vmware.vmware_rest.vcenter_network_info:
     filter_types: DISTRIBUTED_PORTGROUP
   register: my_portgroup
 
-- name: Capture the distrivuted portgroup id to make network mappings
+- name: Capture the distributed portgroup id to make network mappings
   ansible.builtin.set_fact:
     portgroup_id: "{{ my_portgroup.value[0].network }}"
+
+- name: Ensure the portgroup_id is captured properly
+  ansible.builtin.debug:
+    msg: "Portgroup ID: {{ portgroup_id }}"
 
 - name: Create or update a NetworkMap
   redhat.openshift.k8s:
@@ -72,8 +74,12 @@
   register: all_the_datastores
 
 - name: Capture the datastore id
-  set_fact:
+  ansible.builtin.set_fact:
     datastore_id: "{{ all_the_datastores.value[0].datastore }}"
+
+- name: Ensure the datastore_id is captured properly
+  ansible.builtin.debug:
+    msg: "Datastore ID: {{ datastore_id }}"
 
 - name: Create or update a StorageMap
   redhat.openshift.k8s:
