@@ -87,7 +87,7 @@
       spec:
         map:
           - destination:
-              storageClass: ocs-storagecluster-ceph-rbd
+              storageClass: portworx-rwx-kubevirt
             source:
               id: "{{ datastore_id }}"
         provider:
