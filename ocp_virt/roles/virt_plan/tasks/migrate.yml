@@ -40,9 +40,16 @@
   vmware.vmware_rest.vcenter_network_info:
   register: all_networks
 
-- name: Capture the portgroup id to make network mappings
+- name: Create an empty list for network mappings
   ansible.builtin.set_fact:
-    network_mappings: "{{ all_networks.value | map(attribute='network') | list }}"
+    network_mappings: []
+
+- name: Append network mappings
+  ansible.builtin.set_fact:
+    network_mappings: "{{ network_mappings + [{'source': {'id': network.network}, 'destination': {'type': 'pod'}}] }}"
+  loop: "{{ all_networks.value }}"
+  loop_control:
+    loop_var: network
 
 - name: Create or update a NetworkMap
   redhat.openshift.k8s:
@@ -54,13 +61,7 @@
         name: "{{ networkmap_name }}"
         namespace: apm0002135-non-prod
       spec:
-        map: >
-          {% for network in network_mappings %}
-          - destination:
-              type: pod
-            source:
-              id: "{{ network }}"
-          {% endfor %}
+        map: "{{ network_mappings }}"
         provider:
           destination:
             name: local-cluster
@@ -73,9 +74,16 @@
   vmware.vmware_rest.vcenter_datastore_info:
   register: all_the_datastores
 
-- name: Capture the datastore id
+- name: Create an empty list for datastore mappings
   ansible.builtin.set_fact:
-    datastore_ids: "{{ all_the_datastores.value | map(attribute='datastore') | list }}"
+    datastore_mappings: []
+
+- name: Append datastore mappings
+  ansible.builtin.set_fact:
+    datastore_mappings: "{{ datastore_mappings + [{'source': {'id': datastore.datastore}, 'destination': {'storageClass': 'portworx-rwx-kubevirt'}}] }}"
+  loop: "{{ all_the_datastores.value }}"
+  loop_control:
+    loop_var: datastore
 
 - name: Create or update a StorageMap
   redhat.openshift.k8s:
@@ -87,13 +95,7 @@
         name: "{{ storagemap_name }}"
         namespace: apm0002135-non-prod
       spec:
-        map: >
-          {% for datastore in datastore_ids %}
-          - destination:
-              storageClass: portworx-rwx-kubevirt
-            source:
-              id: "{{ datastore }}"
-          {% endfor %}
+        map: "{{ datastore_mappings }}"
         provider:
           destination:
             name: local-cluster
@@ -101,7 +103,19 @@
           source:
             name: "{{ provider_name }}"
             namespace: apm0002135-non-prod
-            
+
+- name: Check if VMs already exist in the target cluster and namespace
+  redhat.openshift.k8s_info:
+    kind: VirtualMachine
+    namespace: apm0002135-non-prod
+  register: existing_vms
+
+- name: Ensure the VM does not already exist in the target namespace
+  fail:
+    msg: "VM {{ item.name }} already exists in the target namespace apm0002135-non-prod"
+  loop: "{{ vms_for_plan_spec }}"
+  when: item.id in existing_vms.resources | map(attribute='metadata.name') | list
+
 - name: Deploy Virt Plan
   redhat.openshift.k8s:
     state: present
@@ -122,15 +136,15 @@
             name: "{{ storagemap_name }}"
             namespace: apm0002135-non-prod
         provider:
-          destination:          
+          destination:
             name: local-cluster
             namespace: apm0002135-non-prod
           source:
             name: "{{ provider_name }}"
-            namespace: apm0002135-non-prod            
+            namespace: apm0002135-non-prod
         targetNamespace: apm0002135-non-prod
         vms: "{{ vms_for_plan_spec }}"
-        warm: "{{ migration_type == 'cold' }}"
+        warm: "{{ migration_type == 'warm' }}"
 
 - name: Create a Migration manifest to run the Plan CR
   redhat.openshift.k8s:
