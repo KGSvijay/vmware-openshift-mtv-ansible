@@ -42,7 +42,7 @@
 
 - name: Create a list of used networks
   ansible.builtin.set_fact:
-    used_networks: "{{ all_vms_info.value | selectattr('vm', 'in', vm_name_id_pairs | map(attribute='vm')) | map(attribute='nics') | flatten | map(attribute='backing.network') | unique | list }}"
+    used_networks: "{{ all_vms_info.value | selectattr('vm', 'in', vm_name_id_pairs | map(attribute='vm')) | map(attribute='nics') | flatten | map(attribute='network') | unique | list }}"
 
 - name: Get information for the networks
   vmware.vmware_rest.vcenter_network_info:
@@ -115,6 +115,18 @@
           source:
             name: "{{ provider_name }}"
             namespace: apm0002135-non-prod
+
+- name: Check if VMs already exist in the target cluster and namespace
+  community.kubernetes.k8s_info:
+    kind: VirtualMachine
+    namespace: apm0002135-non-prod
+  register: existing_vms
+
+- name: Ensure the VM does not already exist in the target namespace
+  fail:
+    msg: "VM {{ item.id }} already exists in the target namespace apm0002135-non-prod"
+  loop: "{{ vms_for_plan_spec }}"
+  when: item.id in existing_vms.resources | map(attribute='metadata.name') | list
 
 - name: Deploy Virt Plan
   redhat.openshift.k8s:
