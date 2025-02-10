@@ -1,4 +1,3 @@
----
 - name: Build a list of all the folders
   vmware.vmware_rest.vcenter_folder_info:
   register: all_folders
@@ -36,11 +35,104 @@
     loop_var: vm_id
   when: vm_id.name in user_selected_vm_names.split('\n')
 
-- name: Collect all VMs info
-  vmware.vmware_rest.vcenter_vm_info:
-  register: all_vms_info
+- name: Get information for the distributed port group 'segment-migrating-to-ocpvirt'
+  vmware.vmware_rest.vcenter_network_info:
+    filter_types: DISTRIBUTED_PORTGROUP
+  register: my_portgroup
 
-- name: Debug VM info
-  debug:
-    var: all_vms_info
-  when: all_vms_info is defined
+- name: Capture the distrivuted portgroup id to make network mappings
+  ansible.builtin.set_fact: 
+    portgroup_id: "{{ my_portgroup.value[0].network }}"
+
+- name: Create or update a NetworkMap
+  redhat.openshift.k8s:
+    state: present
+    definition:
+      apiVersion: forklift.konveyor.io/v1beta1
+      kind: NetworkMap
+      metadata:
+        name: "{{ networkmap_name }}"
+        namespace: apm0002135-non-prod
+      spec:
+        map: "{{ network_mappings }}"
+        provider:
+          destination:
+            name: local-cluster
+            namespace: apm0002135-non-prod
+          source:
+            name: "{{ provider_name }}"
+            namespace: apm0002135-non-prod
+
+
+- name: Build a list of all the datastores
+  vmware.vmware_rest.vcenter_datastore_info:
+  register: all_the_datastores
+
+- name: Capture the datastore id
+  set_fact:
+    datastore_id: "{{ all_the_datastores.value[0].datastore }}"
+
+- name: Create or update a StorageMap
+  redhat.openshift.k8s:
+    state: present
+    definition:
+      apiVersion: forklift.konveyor.io/v1beta1
+      kind: StorageMap
+      metadata:
+        name: "{{ storagemap_name }}"
+        namespace: apm0002135-non-prod
+      spec:
+        map: "{{ datastore_mappings }}"
+        provider:
+          destination:
+            name: local-cluster
+            namespace: apm0002135-non-prod
+          source:
+            name: "{{ provider_name }}"
+            namespace: apm0002135-non-prod
+
+- name: Deploy Virt Plan
+  redhat.openshift.k8s:
+    state: present
+    definition:
+      apiVersion: forklift.konveyor.io/v1beta1
+      kind: Plan
+      metadata:
+        name: "{{ plan_name }}"
+        namespace: apm0002135-non-prod
+      spec:
+        archived: false
+        description: ''
+        map:
+          network:
+            name: "{{ networkmap_name }}"
+            namespace: apm0002135-non-prod
+          storage:
+            name: "{{ storagemap_name }}"
+            namespace: apm0002135-non-prod
+        provider:
+          destination:
+            name: local-cluster
+            namespace: apm0002135-non-prod
+          source:
+            name: "{{ provider_name }}"
+            namespace: apm0002135-non-prod
+        targetNamespace: apm0002135-non-prod
+        vms: "{{ vms_for_plan_spec }}"
+        warm: "{{ (migration_type | default('cold')) == 'warm' }}"
+
+- name: Create a Migration manifest to run the Plan CR
+  redhat.openshift.k8s:
+    state: present
+    api_version: forklift.konveyor.io/v1beta1
+    kind: Migration
+    namespace: apm0002135-non-prod
+    name: "{{ plan_name }}"
+    definition:
+      metadata:
+        name: "{{ plan_name }}"
+        namespace: apm0002135-non-prod
+      spec:
+        plan:
+          name: "{{ plan_name }}"
+          namespace: apm0002135-non-prod
