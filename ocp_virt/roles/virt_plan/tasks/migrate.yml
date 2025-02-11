@@ -34,7 +34,7 @@
 
 - name: Ensure vm_name_id_pairs are populated
   ansible.builtin.debug:
-    msg: "{{ vm_name_id_pairs}}"
+    msg: "{{ vm_name_id_pairs }}"
 
 - name: Get information for Networks and Datastores
   ansible.builtin.set_fact:
@@ -45,10 +45,12 @@
   ansible.builtin.debug:
     msg: "Network IDs: {{ network_ids }}, Datastore IDs: {{ datastore_ids }}"
 
-- name: Create or update NetworkMap for each unique network
-  loop: "{{ network_ids }}"
+- name: Set Network ID
   ansible.builtin.set_fact:
     portgroup_id: "{{ item }}"
+  loop: "{{ network_ids }}"
+
+- name: Create or update a NetworkMap
   redhat.openshift.k8s:
     state: present
     definition:
@@ -70,11 +72,14 @@
           source:
             name: "{{ provider_name }}"
             namespace: apm0002135-non-prod
+  loop: "{{ network_ids }}"
 
-- name: Create or update StorageMap for each unique datastore
-  loop: "{{ datastore_ids }}"
+- name: Set Datastore ID
   ansible.builtin.set_fact:
     datastore_id: "{{ item }}"
+  loop: "{{ datastore_ids }}"
+
+- name: Create or update a StorageMap
   redhat.openshift.k8s:
     state: present
     definition:
@@ -96,6 +101,7 @@
           source:
             name: "{{ provider_name }}"
             namespace: apm0002135-non-prod
+  loop: "{{ datastore_ids }}"
 
 - name: Deploy Virt Plan
   redhat.openshift.k8s:
