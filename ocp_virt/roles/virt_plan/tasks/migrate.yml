@@ -10,47 +10,39 @@
   ansible.builtin.set_fact:
     vm_folders: "{{ all_folders.value | selectattr('type', 'equalto', 'VIRTUAL_MACHINE') | list }}"
 
-- name: Check each VM folder for VMs
+- name: Check each VM folder for VMs to include user selections only
   vmware.vmware_rest.vcenter_vm_info:
     folders: "{{ item.folder }}"
   register: vm_folders_with_vms
   loop: "{{ vm_folders }}"
   when: vm_folders | length > 0
 
+- name: Initialize an empty list for selected VMs details
+  ansible.builtin.set_fact:
+    vms_details: []
+
 - name: Collect details of user-selected VMs
   ansible.builtin.set_fact:
-    vm_name_id_pairs: "{{ vm_name_id_pairs | default([]) + [{'name': vm.name, 'vm': vm.vm, 'network': vm.network, 'datastore': vm.datastore}] }}"
-  loop: "{{ vm_folders_with_vms.results | map(attribute='value') | flatten }}"
-  loop_control:
-    loop_var: vm
-  when: vm.name in user_selected_vm_list
-
-- name: Prepare VMs for Plan spec
-  ansible.builtin.set_fact:
-    vms_for_plan_spec: "{{ vms_for_plan_spec | default([]) + [{'hooks': [], 'id': vm_id.vm}] }}"
-  loop: "{{ vm_name_id_pairs }}"
-  loop_control:
-    loop_var: vm_id
+    vms_details: "{{ vms_details + [vm for vm in vm_folders_with_vms.results | map(attribute='value') | flatten if vm.name in user_selected_vm_list] }}"
 
 - name: Ensure vm_name_id_pairs are populated
   ansible.builtin.debug:
-    msg: "{{ vm_name_id_pairs }}"
+    msg: "{{ vms_details }}"
 
-- name: Get information for Networks and Datastores
+- name: Get network and datastore ids
   ansible.builtin.set_fact:
-    network_ids: "{{ vm_name_id_pairs | map(attribute='network') | flatten | unique }}"
-    datastore_ids: "{{ vm_name_id_pairs | map(attribute='datastore') | flatten | unique }}"
+    network_ids: "{{ vms_details | map(attribute='network') | unique }}"
+    datastore_ids: "{{ vms_details | map(attribute='datastore') | unique }}"
+  # Assuming network and datastor are corrected here to avoid lookup issues
 
 - name: Ensure network_ids and datastore_ids are captured properly
   ansible.builtin.debug:
     msg: "Network IDs: {{ network_ids }}, Datastore IDs: {{ datastore_ids }}"
 
-- name: Set Network ID
+- name: Create or update a NetworkMap for each unique network
+  loop: "{{ network_ids }}"
   ansible.builtin.set_fact:
     portgroup_id: "{{ item }}"
-  loop: "{{ network_ids }}"
-
-- name: Create or update a NetworkMap
   redhat.openshift.k8s:
     state: present
     definition:
@@ -72,14 +64,11 @@
           source:
             name: "{{ provider_name }}"
             namespace: apm0002135-non-prod
-  loop: "{{ network_ids }}"
 
-- name: Set Datastore ID
+- name: Create or update a StorageMap for each unique datastore
+  loop: "{{ datastore_ids }}"
   ansible.builtin.set_fact:
     datastore_id: "{{ item }}"
-  loop: "{{ datastore_ids }}"
-
-- name: Create or update a StorageMap
   redhat.openshift.k8s:
     state: present
     definition:
@@ -101,7 +90,10 @@
           source:
             name: "{{ provider_name }}"
             namespace: apm0002135-non-prod
-  loop: "{{ datastore_ids }}"
+
+- name: Prepare VMs for Plan spec
+  ansible.builtin.set_fact:
+    vms_for_plan_spec: "{{ vms_details | map(attribute='vm') | list | map('dict', { 'hooks': [], 'id': vm }) }}"
 
 - name: Deploy Virt Plan
   redhat.openshift.k8s:
