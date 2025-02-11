@@ -1,17 +1,33 @@
+# Step 1: Convert User-Selected VM Names to List
 - name: Convert user-selected VM names to list
   ansible.builtin.set_fact:
     user_selected_vm_list: "{{ user_selected_vm_names.split('\n') | map('trim') }}"
 
+- name: Debug user_selected_vm_list
+  ansible.builtin.debug:
+    msg: "{{ user_selected_vm_list }}"
+
+# Step 2: Build a List of All the Folders
 - name: Build a list of all the folders
-  vmware.vmware_rest.vcenter_folder_info:
+  community.vmware.vmware_rest_folder_info:
   register: all_folders
 
+- name: Debug all_folders
+  ansible.builtin.debug:
+    msg: "{{ all_folders }}"
+
+# Step 3: Filter VM Folders
 - name: Filter VM folders
   ansible.builtin.set_fact:
     vm_folders: "{{ all_folders.value | selectattr('type', 'equalto', 'VIRTUAL_MACHINE') | list }}"
 
+- name: Debug vm_folders
+  ansible.builtin.debug:
+    msg: "{{ vm_folders }}"
+
+# Step 4: Check Each VM Folder for VMs to Include User Selections Only
 - name: Check each VM folder for VMs to include user selections only
-  vmware.vmware_rest.vcenter_vm_info:
+  community.vmware.vmware_rest_vcenter_vm_info:
     folders: "{{ item.folder }}"
   register: vm_folders_with_vms
   loop: "{{ vm_folders }}"
@@ -21,10 +37,12 @@
   ansible.builtin.debug:
     msg: "{{ vm_folders_with_vms.results }}"
 
+# Step 5: Initialize an Empty List for vms_details
 - name: Initialize an empty list for vms_details
   ansible.builtin.set_fact:
     vms_details: []
 
+# Step 6: Collect Details of User-Selected VMs
 - name: Collect details of user-selected VMs
   ansible.builtin.set_fact:
     vms_details: "{{ vms_details + [item] }}"
@@ -33,43 +51,24 @@
   loop_control:
     label: "{{ item.name }}"
 
-# Step 7: Query network and datastore information
-- name: Query network information for selected VMs
-  vmware.vmware_rest.vcenter_vm_network_info:
-    vm: "{{ item.vm }}"
-  register: network_info
-  loop: "{{ vms_details }}"
-
-- name: Query datastore information for selected VMs
-  vmware.vmware_rest.vcenter_vm_storage_info:
-    vm: "{{ item.vm }}"
-  register: datastore_info
-  loop: "{{ vms_details }}"
-
-# Step 8: Collect network and datastore ids from VMs details
-- name: Initialize an empty list for network_ids
-  ansible.builtin.set_fact:
-    network_ids: []
-
-- name: Initialize an empty list for datastore_ids
-  ansible.builtin.set_fact:
-    datastore_ids: []
-
-- name: Collect network ids
-  ansible.builtin.set_fact:
-    network_ids: "{{ network_ids + [item] }}"
-  loop: "{{ network_info.results | map(attribute='network') | flatten }}"  # adapt appropriate attributes  
-
-- name: Collect datastore ids
-  ansible.builtin.set_fact:
-    datastore_ids: "{{ datastore_ids + [item] }}"
-  loop: "{{ datastore_info.results | map(attribute='datastore') | flatten }}"  # adapt appropriate attributes  
-
-- name: Ensure network_ids and datastore_ids are captured properly
-  ansible.builtin.debug:
-    msg: "Network IDs: {{ network_ids }}, Datastore IDs: {{ datastore_ids }}"
-
 - name: Debug selected VMs details
   ansible.builtin.debug:
     msg: "{{ vms_details }}"
 
+# Step 7: Fetch Full Details of User-Selected VMs
+- name: Fetch full details of user-selected VMs
+  community.vmware.vmware_vm_facts:
+    gather_filter:
+      - name: "{{ item.name }}"
+  register: selected_vms_facts
+  loop: "{{ vms_details }}"
+
+# Step 8: Parse Network and Datastore Information
+- name: Extract network and datastore information
+  ansible.builtin.set_fact:
+    network_ids: "{{ selected_vms_facts.ansible_facts.virtual_machines | map(attribute='guest.net') | map('selectattr', 'network', 'defined') | map('map', 'network') | flatten | unique }}"
+    datastore_ids: "{{ selected_vms_facts.ansible_facts.virtual_machines | map(attribute='datastore') | flatten | unique }}"
+
+- name: Ensure network_ids and datastore_ids are captured properly
+  ansible.builtin.debug:
+    msg: "Network IDs: {{ network_ids }}, Datastore IDs: {{ datastore_ids }}"
