@@ -7,68 +7,142 @@
   ansible.builtin.debug:
     msg: "{{ user_selected_vm_list }}"
 
-# Step 2: Build a List of All the Folders
-- name: Build a list of all the folders
-  community.vmware.vmware_rest_folder_info:
-  register: all_folders
+# Step 2: Fetch Detailed Information about VMs Using community.vmware.vmware_vm_info
+- name: Fetch detailed information about VMs
+  community.vmware.vmware_vm_info:
+  register: all_vms
 
-- name: Debug all_folders
+- name: Debug all_vms
   ansible.builtin.debug:
-    msg: "{{ all_folders }}"
+    msg: "{{ all_vms }}"
 
-# Step 3: Filter VM Folders
-- name: Filter VM folders
+# Step 3: Filter VM Details for User-Selected VMs
+- name: Filter details for user-selected VMs
   ansible.builtin.set_fact:
-    vm_folders: "{{ all_folders.value | selectattr('type', 'equalto', 'VIRTUAL_MACHINE') | list }}"
+    selected_vms: "{{ all_vms.virtual_machines | selectattr('name', 'in', user_selected_vm_list) | list }}"
 
-- name: Debug vm_folders
+- name: Debug selected_vms
   ansible.builtin.debug:
-    msg: "{{ vm_folders }}"
+    msg: "{{ selected_vms }}"
 
-# Step 4: Check Each VM Folder for VMs to Include User Selections Only
-- name: Check each VM folder for VMs to include user selections only
-  community.vmware.vmware_rest_vcenter_vm_info:
-    folders: "{{ item.folder }}"
-  register: vm_folders_with_vms
-  loop: "{{ vm_folders }}"
-  when: vm_folders | length > 0
+# Step 4: Initialize Lists for Network and Datastore IDs
+- name: Initialize empty lists for network_ids and datastore_ids
+  ansible.builtin.set_fact:
+    network_ids: []
+    datastore_ids: []
 
-- name: Debug VM information fetched
+# Step 5: Collect Network and Datastore IDs
+- name: Collect network and datastore ids
+  ansible.builtin.set_fact:
+    network_ids: "{{ network_ids + item.guest_net | map(attribute='network') | list }}"
+    datastore_ids: "{{ datastore_ids + item.datastore | list }}"
+  loop: "{{ selected_vms }}"
+
+- name: Debug network_ids and datastore_ids
   ansible.builtin.debug:
-    msg: "{{ vm_folders_with_vms.results }}"
+    msg: "Network IDs: {{ network_ids | unique }}, Datastore IDs: {{ datastore_ids | unique }}"
 
-# Step 5: Initialize an Empty List for vms_details
-- name: Initialize an empty list for vms_details
-  ansible.builtin.set_fact:
-    vms_details: []
+# Step 6: Create or Update NetworkMap for Each Unique Network
+- name: Create or update a NetworkMap for each unique network
+  redhat.openshift.k8s:
+    state: present
+    definition:
+      apiVersion: forklift.konveyor.io/v1beta1
+      kind: NetworkMap
+      metadata:
+        name: "{{ networkmap_name }}-{{ loop.index }}"
+        namespace: apm0002135-non-prod
+      spec:
+        map:
+          - destination:
+              type: pod
+            source:
+              id: "{{ item }}"
+        provider:
+          destination:
+            name: local-cluster
+            namespace: apm0002135-non-prod
+          source:
+            name: "{{ provider_name }}"
+            namespace: apm0002135-non-prod
+  loop: "{{ network_ids | unique }}"
 
-# Step 6: Collect Details of User-Selected VMs
-- name: Collect details of user-selected VMs
+# Step 7: Create or Update StorageMap for Each Unique Datastore
+- name: Create or update a StorageMap for each unique datastore
+  redhat.openshift.k8s:
+    state: present
+    definition:
+      apiVersion: forklift.konveyor.io/v1beta1
+      kind: StorageMap
+      metadata:
+        name: "{{ storagemap_name }}-{{ loop.index }}"
+        namespace: apm0002135-non-prod
+      spec:
+        map:
+          - destination:
+              storageClass: portworx-rwx-kubevirt
+            source:
+              id: "{{ item }}"
+        provider:
+          destination:
+            name: local-cluster
+            namespace: apm0002135-non-prod
+          source:
+            name: "{{ provider_name }}"
+            namespace: apm0002135-non-prod
+  loop: "{{ datastore_ids | unique }}"
+
+# Step 8: Prepare VMs for Plan Spec Based on selected_vms
+- name: Prepare VMs for Plan spec
   ansible.builtin.set_fact:
-    vms_details: "{{ vms_details + [item] }}"
-  loop: "{{ vm_folders_with_vms.results | map(attribute='value') | flatten }}"
-  when: item.name in user_selected_vm_list
+    vms_for_plan_spec: "{{ vms_for_plan_spec | default([]) + [{'hooks': [], 'id': vm_id.vm}] }}"
+  loop: "{{ selected_vms }}"
   loop_control:
-    label: "{{ item.name }}"
+    loop_var: vm_id
 
-- name: Debug selected VMs details
-  ansible.builtin.debug:
-    msg: "{{ vms_details }}"
+# Step 9: Deploy Virt Plan
+- name: Deploy Virt Plan
+  redhat.openshift.k8s:
+    state: present
+    definition:
+      apiVersion: forklift.konveyor.io/v1beta1
+      kind: Plan
+      metadata:
+        name: "{{ plan_name }}"
+        namespace: apm0002135-non-prod
+      spec:
+        archived: false
+        description: ''
+        map:
+          network:
+            name: "{{ networkmap_name }}"
+            namespace: apm0002135-non-prod
+          storage:
+            name: "{{ storagemap_name }}"
+            namespace: apm0002135-non-prod
+        provider:
+          destination:
+            name: local-cluster
+            namespace: apm0002135-non-prod
+          source:
+            name: "{{ provider_name }}"
+            namespace: apm0002135-non-prod
+        targetNamespace: apm0002135-non-prod
+        vms: "{{ vms_for_plan_spec }}"
+        warm: false
 
-# Step 7: Fetch Full Details of User-Selected VMs
-- name: Fetch full details of user-selected VMs
-  community.vmware.vmware_vm_facts:
-    gather_filter:
-      - name: "{{ item.name }}"
-  register: selected_vms_facts
-  loop: "{{ vms_details }}"
-
-# Step 8: Parse Network and Datastore Information
-- name: Extract network and datastore information
-  ansible.builtin.set_fact:
-    network_ids: "{{ selected_vms_facts.ansible_facts.virtual_machines | map(attribute='guest.net') | map('selectattr', 'network', 'defined') | map('map', 'network') | flatten | unique }}"
-    datastore_ids: "{{ selected_vms_facts.ansible_facts.virtual_machines | map(attribute='datastore') | flatten | unique }}"
-
-- name: Ensure network_ids and datastore_ids are captured properly
-  ansible.builtin.debug:
-    msg: "Network IDs: {{ network_ids }}, Datastore IDs: {{ datastore_ids }}"
+# Step 10: Create a Migration Manifest to Run the Plan CR
+- name: Create a Migration manifest to run the Plan CR
+  redhat.openshift.k8s:
+    api_version: forklift.konveyor.io/v1beta1
+    kind: Migration
+    namespace: apm0002135-non-prod
+    name: "{{ plan_name }}"
+    definition:
+      metadata:
+        name: "{{ plan_name }}"
+        namespace: apm0002135-non-prod
+      spec:
+        plan:
+          name: "{{ plan_name }}"
+          namespace: apm0002135-non-prod
