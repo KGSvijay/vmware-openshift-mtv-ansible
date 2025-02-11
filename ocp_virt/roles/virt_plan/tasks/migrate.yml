@@ -7,85 +7,40 @@
   ansible.builtin.debug:
     msg: "{{ user_selected_vm_list }}"
 
-# Step 2: List All Folders
-- name: Fetch folders with vcenter_folder_info
-  vmware.vmware_rest.vcenter_folder_info:
-  register: all_folders
-
-- name: Debug all_folders
-  ansible.builtin.debug:
-    msg: "{{ all_folders }}"
-
-# Step 3: Filter VM Folders
-- name: Filter VM folders
-  ansible.builtin.set_fact:
-    vm_folders: "{{ all_folders.value | selectattr('type', 'equalto', 'VIRTUAL_MACHINE') | list }}"
-
-- name: Debug vm_folders
-  ansible.builtin.debug:
-    msg: "{{ vm_folders }}"
-
-# Step 4: Fetch VMs in VM Folders
-- name: Fetch VMs in the folders
-  vmware.vmware_rest.vcenter_vm_info:
-    folders: "{{ item.folder }}"
-  register: vm_folders_with_vms
-  loop: "{{ vm_folders }}"
-  when: vm_folders | length > 0
-
-- name: Debug VM information fetched
-  ansible.builtin.debug:
-    msg: "{{ vm_folders_with_vms.results }}"
-
-# Step 5: Collect Details of User-Selected VMs
-- name: Initialize an empty list for vms_details
-  ansible.builtin.set_fact:
-    vms_details: []
-
-- name: Collect details of user-selected VMs
-  ansible.builtin.set_fact:
-    vms_details: "{{ vms_details + [item] }}"
-  loop: "{{ vm_folders_with_vms.results | map(attribute='value') | flatten }}"
-  when: item.name in user_selected_vm_list
-  loop_control:
-    label: "{{ item.name }}"
-
-- name: Debug selected VMs details
-  ansible.builtin.debug:
-    msg: "{{ vms_details }}"
-
-# Step 6: Fetch Detailed Information of User-selected VMs using vmware_guest_info built-in module
-- name: Fetch full details of user-selected VMs
-  vmware.vmware_guest_info:
+# Step 2: Fetch Detailed Information about VMs Using `community.vmware.vmware_vm_info`
+- name: Fetch detailed information about VMs
+  community.vmware.vmware_vm_info:
     hostname: "{{ vcenter_hostname }}"
     username: "{{ vcenter_username }}"
     password: "{{ vcenter_password }}"
     validate_certs: no
-    name: "{{ item.name }}"
-  register: all_vm_facts
-  loop: "{{ vms_details }}"
+    name: "{{ item }}"
+  loop: "{{ user_selected_vm_list }}"
+  register: vm_details
 
-# Step 7: Collect Network and Datastore IDs
+- name: Debug vm_details
+  ansible.builtin.debug:
+    msg: "{{ vm_details }}"
+
+# Step 3: Extract Network and Datastore Information
 - name: Initialize lists for network_ids and datastore_ids
   ansible.builtin.set_fact:
     network_ids: []
     datastore_ids: []
 
-- name: Collect network ids
+- name: Collect network and datastore ids
   ansible.builtin.set_fact:
-    network_ids: "{{ network_ids + item.guest.net | map(attribute='network') | list | unique }}"
-  loop: "{{ all_vm_facts.results | map(attribute='virtual_machines') | flatten }}"
-
-- name: Collect datastore ids
-  ansible.builtin.set_fact:
-    datastore_ids: "{{ datastore_ids + item.datastore | list | unique }}"
-  loop: "{{ all_vm_facts.results | map(attribute='virtual_machines') | flatten }}"
+    network_ids: "{{ network_ids + vm.guest.net | map(attribute='network') | list | unique }}"
+    datastore_ids: "{{ datastore_ids + vm.datastore | list | unique }}"
+  loop: "{{ vm_details.results | map(attribute='virtual_machines') | flatten }}"
+  loop_control:
+    loop_var: vm
 
 - name: Ensure network_ids and datastore_ids are captured properly
   ansible.builtin.debug:
     msg: "Network IDs: {{ network_ids }}, Datastore IDs: {{ datastore_ids }}"
 
-# Step 8: Create or Update NetworkMap for Each Unique Network
+# Step 4: Create or Update NetworkMap for Each Unique Network
 - name: Create or update a NetworkMap for each unique network
   redhat.openshift.k8s:
     state: present
@@ -110,7 +65,7 @@
             namespace: apm0002135-non-prod
   loop: "{{ network_ids }}"
 
-# Step 9: Create or Update StorageMap for Each Unique Datastore
+# Step 5: Create or Update StorageMap for Each Unique Datastore
 - name: Create or update a StorageMap for each unique datastore
   redhat.openshift.k8s:
     state: present
@@ -135,15 +90,15 @@
             namespace: apm0002135-non-prod
   loop: "{{ datastore_ids }}"
 
-# Step 10: Prepare VMs for Plan Spec Based on vms_details
+# Step 6: Prepare VMs for Plan Spec Based on vm_details
 - name: Prepare VMs for Plan spec
   ansible.builtin.set_fact:
-    vms_for_plan_spec: "{{ vms_for_plan_spec | default([]) + [{'hooks': [], 'id': vm_id.vm}] }}"
-  loop: "{{ vms_details }}"
+    vms_for_plan_spec: "{{ vms_for_plan_spec | default([]) + [{'hooks': [], 'id': vm.vm }] }}"
+  loop: "{{ vm_details.results | map(attribute='virtual_machines') | flatten }}"
   loop_control:
-    loop_var: vm_id
+    loop_var: vm
 
-# Step 11: Deploy Virt Plan
+# Step 7: Deploy Virt Plan
 - name: Deploy Virt Plan
   redhat.openshift.k8s:
     state: present
@@ -174,7 +129,7 @@
         vms: "{{ vms_for_plan_spec }}"
         warm: false
 
-# Step 12: Create a Migration Manifest to Run the Plan CR
+# Step 8: Create a Migration Manifest to Run the Plan CR
 - name: Create a Migration manifest to run the Plan CR
   redhat.openshift.k8s:
     api_version: forklift.konveyor.io/v1beta1
