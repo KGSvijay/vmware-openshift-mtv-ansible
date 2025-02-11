@@ -27,8 +27,10 @@
 
 - name: Collect details of user-selected VMs
   ansible.builtin.set_fact:
-    vms_details: "{{ vms_details + [ vm for vm in item.value if vm.name in user_selected_vm_list ] }}"
-  loop: "{{ vm_folders_with_vms.results }}"
+    vms_details: "{{ vms_details + [item] }}"
+  loop: "{{ vm_folders_with_vms.results | map(attribute='value') | flatten }}"
+  when: item.name in user_selected_vm_list
   loop_control:
-    label: "{{ item.folders }}"
+    label: "{{ item.name }}"
+
 
