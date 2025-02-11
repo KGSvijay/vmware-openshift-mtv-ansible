@@ -1,6 +1,6 @@
 - name: Convert user-selected VM names to list
   ansible.builtin.set_fact:
-    user_selected_vm_list: "{{ user_selected_vm_names.split('\n') }}"
+    user_selected_vm_list: "{{ user_selected_vm_names.split('\n') | map('trim') }}"
 
 - name: Build a list of all the folders
   vmware.vmware_rest.vcenter_folder_info:
@@ -27,7 +27,8 @@
 
 - name: Collect details of user-selected VMs
   ansible.builtin.set_fact:
-    vms_details: "{{ vms_details + [vm for vm in item.value if vm.name in user_selected_vm_list] }}"
+    vms_details: "{{ vms_details + [ vm for vm in item.value if vm.name in user_selected_vm_list ] }}"
   loop: "{{ vm_folders_with_vms.results }}"
   loop_control:
     label: "{{ item.folders }}"
+
