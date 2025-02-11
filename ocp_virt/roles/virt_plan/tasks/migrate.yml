@@ -33,6 +33,42 @@
   loop_control:
     label: "{{ item.name }}"
 
+# Step 7: Query network and datastore information
+- name: Query network information for selected VMs
+  vmware.vmware_rest.vcenter_vm_network_info:
+    vm: "{{ item.vm }}"
+  register: network_info
+  loop: "{{ vms_details }}"
+
+- name: Query datastore information for selected VMs
+  vmware.vmware_rest.vcenter_vm_storage_info:
+    vm: "{{ item.vm }}"
+  register: datastore_info
+  loop: "{{ vms_details }}"
+
+# Step 8: Collect network and datastore ids from VMs details
+- name: Initialize an empty list for network_ids
+  ansible.builtin.set_fact:
+    network_ids: []
+
+- name: Initialize an empty list for datastore_ids
+  ansible.builtin.set_fact:
+    datastore_ids: []
+
+- name: Collect network ids
+  ansible.builtin.set_fact:
+    network_ids: "{{ network_ids + [item] }}"
+  loop: "{{ network_info.results | map(attribute='network') | flatten }}"  # adapt appropriate attributes  
+
+- name: Collect datastore ids
+  ansible.builtin.set_fact:
+    datastore_ids: "{{ datastore_ids + [item] }}"
+  loop: "{{ datastore_info.results | map(attribute='datastore') | flatten }}"  # adapt appropriate attributes  
+
+- name: Ensure network_ids and datastore_ids are captured properly
+  ansible.builtin.debug:
+    msg: "Network IDs: {{ network_ids }}, Datastore IDs: {{ datastore_ids }}"
+
 - name: Debug selected VMs details
   ansible.builtin.debug:
     msg: "{{ vms_details }}"
