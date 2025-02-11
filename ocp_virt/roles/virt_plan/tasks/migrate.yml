@@ -33,4 +33,7 @@
   loop_control:
     label: "{{ item.name }}"
 
+- name: Debug selected VMs details
+  ansible.builtin.debug:
+    msg: "{{ vms_details }}"
 
