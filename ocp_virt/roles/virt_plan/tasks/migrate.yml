@@ -1,3 +1,7 @@
+- name: Convert user-selected VM names to list
+  ansible.builtin.set_fact:
+    user_selected_vm_list: "{{ user_selected_vm_names.split('\n') }}"
+
 - name: Build a list of all the folders
   vmware.vmware_rest.vcenter_folder_info:
   register: all_folders
@@ -6,25 +10,17 @@
   ansible.builtin.set_fact:
     vm_folders: "{{ all_folders.value | selectattr('type', 'equalto', 'VIRTUAL_MACHINE') | list }}"
 
-- name: Convert user-selected VM names to list
-  ansible.builtin.set_fact:
-    user_selected_vm_list: "{{ user_selected_vm_names.split('\n') }}"
-
-- name: Filter folders that contain user-selected VMs
+- name: Check each VM folder for VMs
   vmware.vmware_rest.vcenter_vm_info:
     folders: "{{ item.folder }}"
-  register: vm_info_results
+  register: vm_folders_with_vms
   loop: "{{ vm_folders }}"
   when: vm_folders | length > 0
 
-- name: Ensure vm_info_results is populated
-  ansible.builtin.debug:
-    msg: "{{ vm_info_results}}"
-
-- name: Collect VM names and IDs of user-selected VMs
+- name: Collect details of user-selected VMs
   ansible.builtin.set_fact:
-    vm_name_id_pairs: "{{ vm_name_id_pairs | default([]) + [{'name': vm.name, 'vm': vm.vm}] }}"
-  loop: "{{ vm_info_results.results | map(attribute='value') | flatten }}"
+    vm_name_id_pairs: "{{ vm_name_id_pairs | default([]) + [{'name': vm.name, 'vm': vm.vm, 'network': vm.network, 'datastore': vm.datastore}] }}"
+  loop: "{{ vm_folders_with_vms.results | map(attribute='value') | flatten }}"
   loop_control:
     loop_var: vm
   when: vm.name in user_selected_vm_list
@@ -36,27 +32,30 @@
   loop_control:
     loop_var: vm_id
 
-- name: Get information for the distributed port group 'segment-migrating-to-ocpvirt'
-  vmware.vmware_rest.vcenter_network_info:
-    filter_types: DISTRIBUTED_PORTGROUP
-  register: my_portgroup
-
-- name: Capture the distributed portgroup id to make network mappings
-  ansible.builtin.set_fact:
-    portgroup_id: "{{ my_portgroup.value[0].network }}"
-
-- name: Ensure the portgroup_id is captured properly
+- name: Ensure vm_name_id_pairs are populated
   ansible.builtin.debug:
-    msg: "Portgroup ID: {{ portgroup_id }}"
+    msg: "{{ vm_name_id_pairs}}"
 
-- name: Create or update a NetworkMap
+- name: Get information for Networks and Datastores
+  ansible.builtin.set_fact:
+    network_ids: "{{ vm_name_id_pairs | map(attribute='network') | flatten | unique }}"
+    datastore_ids: "{{ vm_name_id_pairs | map(attribute='datastore') | flatten | unique }}"
+
+- name: Ensure network_ids and datastore_ids are captured properly
+  ansible.builtin.debug:
+    msg: "Network IDs: {{ network_ids }}, Datastore IDs: {{ datastore_ids }}"
+
+- name: Create or update NetworkMap for each unique network
+  loop: "{{ network_ids }}"
+  ansible.builtin.set_fact:
+    portgroup_id: "{{ item }}"
   redhat.openshift.k8s:
     state: present
     definition:
       apiVersion: forklift.konveyor.io/v1beta1
       kind: NetworkMap
       metadata:
-        name: "{{ networkmap_name }}"
+        name: "{{ networkmap_name }}-{{ loop.index }}"
         namespace: apm0002135-non-prod
       spec:
         map:
@@ -72,26 +71,17 @@
             name: "{{ provider_name }}"
             namespace: apm0002135-non-prod
 
-- name: Build a list of all the datastores
-  vmware.vmware_rest.vcenter_datastore_info:
-  register: all_the_datastores
-
-- name: Capture the datastore id
+- name: Create or update StorageMap for each unique datastore
+  loop: "{{ datastore_ids }}"
   ansible.builtin.set_fact:
-    datastore_id: "{{ all_the_datastores.value[0].datastore }}"
-
-- name: Ensure the datastore_id is captured properly
-  ansible.builtin.debug:
-    msg: "Datastore ID: {{ datastore_id }}"
-
-- name: Create or update a StorageMap
+    datastore_id: "{{ item }}"
   redhat.openshift.k8s:
     state: present
     definition:
       apiVersion: forklift.konveyor.io/v1beta1
       kind: StorageMap
       metadata:
-        name: "{{ storagemap_name }}"
+        name: "{{ storagemap_name }}-{{ loop.index }}"
         namespace: apm0002135-non-prod
       spec:
         map:
