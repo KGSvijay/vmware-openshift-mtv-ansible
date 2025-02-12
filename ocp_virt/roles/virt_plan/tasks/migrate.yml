@@ -15,6 +15,7 @@
     vcenter_password: "{{ vcenter_password }}"
     vcenter_validate_certs: no
     names: "{{ user_selected_vm_list }}"
+  delegate_to: localhost
   register: vm_details
 
 - name: Debug vm_details
@@ -34,7 +35,8 @@
     username: "{{ vcenter_username }}"
     password: "{{ vcenter_password }}"
     validate_certs: no
-    moid: "{{ item.vmid }}"  # Reference the VM ID correctly
+    moid: "{{ item.vm }}"
+  delegate_to: localhost
   register: network_info
   loop: "{{ vm_details.value }}"
 
@@ -44,12 +46,13 @@
     vcenter_username: "{{ vcenter_username }}"
     vcenter_password: "{{ vcenter_password }}"
     vcenter_validate_certs: no
+  delegate_to: localhost
   register: datastore_info
 
 # Step 5: Collect Network IDs and Datastore IDs
 - name: Collect network ids
   ansible.builtin.set_fact:
-    network_ids: "{{ network_ids + item.networks | map(attribute='network') | list }}"
+    network_ids: "{{ network_ids + item.guest_net | map(attribute='network') | list }}"
   loop: "{{ network_info.results }}"
 
 - name: Collect datastore ids
@@ -94,7 +97,7 @@
   redhat.openshift.k8s:
     state: present
     definition:
-      apiVersion: forklift.konveyor.io.v1beta1
+      apiVersion: forklift.konveyor.io/v1beta1
       kind: StorageMap
       metadata:
         name: "{{ storagemap_name }}-{{ loop.index }}"
@@ -119,7 +122,7 @@
 # Step 8: Prepare VMs for Plan Spec
 - name: Prepare VMs for Plan spec
   ansible.builtin.set_fact:
-    vms_for_plan_spec: "{{ vms_for_plan_spec | default([]) + [{'hooks': [], 'id': vm.vmid }] }}"
+    vms_for_plan_spec: "{{ vms_for_plan_spec | default([]) + [{'hooks': [], 'id': vm.vm}] }}"
   loop: "{{ vm_details.value }}"
   loop_control:
     loop_var: vm
@@ -129,7 +132,7 @@
   redhat.openshift.k8s:
     state: present
     definition:
-      apiVersion: forklift.konveyor.io.v1beta1
+      apiVersion: forklift.konveyor.io/v1beta1
       kind: Plan
       metadata:
         name: "{{ plan_name }}"
