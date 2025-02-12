@@ -1,9 +1,9 @@
-- name: Fetch detailed information about VMs
-  community.vmware.vmware_guest_info:
-    hostname: "{{ vcenter_hostname }}"
-    username: "{{ vcenter_username }}"
-    password: "{{ vcenter_password }}"
-    validate_certs: no
-    name: "{{ item }}"
-  loop: "{{ user_selected_vm_list }}"
-  register: vm_details
+    - name: Fetch detailed information about VMs
+      vmware.vmware_rest.vcenter_vm_info:
+        hostname: "{{ vcenter_hostname }}"
+        username: "{{ vcenter_username }}"
+        password: "{{ vcenter_password }}"
+        validate_certs: no
+        filter:
+          names: "{{ user_selected_vm_list }}"
+      register: vm_details
