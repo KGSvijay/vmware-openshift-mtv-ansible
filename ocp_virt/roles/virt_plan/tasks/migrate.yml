@@ -1,3 +1,4 @@
+---
 # Step 1: Convert User-Selected VM Names to List
 - name: Convert user-selected VM names to list
   ansible.builtin.set_fact:
@@ -28,14 +29,14 @@
     network_ids: []
     datastore_ids: []
 
-# Step 4: Fetch network information for selected VMs
+# Step 4: Fetch network information using vmware_guest module (community.vmware collection)
 - name: Fetch network information for selected VMs
-  community.vmware.vmware_vm_info:
+  community.vmware.vmware_guest:
     hostname: "{{ vcenter_hostname }}"
     username: "{{ vcenter_username }}"
     password: "{{ vcenter_password }}"
     validate_certs: no
-    moid: "{{ item.vm }}"
+    names: "{{ item.name }}"
   delegate_to: localhost
   register: network_info
   loop: "{{ vm_details.value }}"
@@ -52,14 +53,14 @@
 # Step 5: Collect Network IDs and Datastore IDs
 - name: Collect network ids
   ansible.builtin.set_fact:
-    network_ids: "{{ network_ids + item.guest_net | map(attribute='network') | list }}"
+    network_ids: "{{ network_ids + item.network | map(attribute='network') | list }}"
   loop: "{{ network_info.results }}"
 
 - name: Collect datastore ids
   ansible.builtin.set_fact:
     datastore_ids: "{{ datastore_ids + [item.name] }}"
   loop: "{{ datastore_info.value }}"
-  when: "'{{ item.datastore }}' in (vm_details.value | map(attribute='datastore') | list flatten())"
+  when: "'{{ item.name }}' in (vm_details.value | map(attribute='vm') | list)"
 
 - name: Ensure network_ids and datastore_ids are captured properly
   ansible.builtin.debug:
