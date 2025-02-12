@@ -132,35 +132,35 @@
     loop_var: vm
 
 # Step 10: Deploy Virt Plan
--	name:	Deploy	Virt	Plan
-    redhat.openshift.k8s:
-        state:	present
-        definition:
-            apiVersion:	forklift.konveyor.io/v1beta1
-            kind:	Plan
-            metadata:
-                name:	"{{	plan_name	}}"
-                namespace:	apm0002135-non-prod
-            spec:
-                archived:	false
-                description:	''
-                map:
-                    network:
-                        name:	"{{	networkmap_name	}}"
-                        namespace:	apm0002135-non-prod
-                    storage:
-                        name:	"{{	storagemap_name	}}"
-                        namespace:	apm0002135-non-prod
-                provider:
-                    destination:
-                        name:	local-cluster
-                        namespace:	apm0002135-non-prod
-                    source:
-                        name:	"{{	provider_name	}}"
-                        namespace:	apm0002135-non-prod
-                targetNamespace:	apm0002135-non-prod
-                vms:	"{{	vms_for_plan_spec	}}"
-                warm:	false
+- name: Deploy Virt Plan
+  redhat.openshift.k8s:
+    state: present
+    definition:
+      apiVersion: forklift.konveyor.io.v1beta1
+      kind: Plan
+      metadata:
+        name: "{{ plan_name }}"
+        namespace: apm0002135-non-prod
+      spec:
+        archived: false
+        description: ''
+        map:
+          network:
+            name: "{{ networkmap_name }}"
+            namespace: apm0002135-non-prod
+          storage:
+            name: "{{ storagemap_name }}"
+            namespace: apm0002135-non-prod
+        provider:
+          destination:
+            name: local-cluster
+            namespace: apm0002135-non-prod
+          source:
+            name: "{{ provider_name }}"
+            namespace: apm0002135-non-prod
+        targetNamespace: apm0002135-non-prod
+        vms: "{{ vms_for_plan_spec }}"
+        warm: false
 
 # Step 11: Create a Migration Manifest to Run the Plan CR
 - name: Create a Migration manifest to run the Plan CR
