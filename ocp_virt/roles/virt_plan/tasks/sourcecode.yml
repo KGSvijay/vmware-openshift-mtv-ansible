@@ -108,10 +108,6 @@
 # Step 10: Collect Detailed VM Information Including Datastores
 - name: Fetch detailed information about VMs including datastores
   vmware.vmware_rest.vcenter_vm_info:
-    vcenter_hostname: "{{ vcenter_hostname }}"
-    vcenter_username: "{{ vcenter_username }}"
-    vcenter_password: "{{ vcenter_password }}"
-    vcenter_validate_certs: no
     ids: "{{ vm_name_id_pairs | map(attribute='vm') | list }}"
   register: vm_details
 
