@@ -29,18 +29,26 @@
     network_ids: []
     datastore_ids: []
 
-# Step 4: Fetch network information using vmware_guest module (community.vmware collection)
+# Step 4: Fetch Network Information using vmware_guest_info (vmware.vmware)
 - name: Fetch network information for selected VMs
-  community.vmware.vmware_guest:
+  vmware.vmware_guest_info:
     hostname: "{{ vcenter_hostname }}"
     username: "{{ vcenter_username }}"
     password: "{{ vcenter_password }}"
     validate_certs: no
-    names: "{{ item.name }}"
+    name: "{{ item.name }}"
   delegate_to: localhost
   register: network_info
   loop: "{{ vm_details.value }}"
+  loop_control:
+    label: "{{ item.name }}"
 
+# Consolidate Network IDs
+- name: Collect network ids
+  ansible.builtin.set_fact:
+    network_ids: "{{ network_ids + network_info.network_interfaces | map(attribute='network') | list }}"
+
+# Step 5: Fetch Datastore Information
 - name: Fetch datastore information
   vmware.vmware_rest.vcenter_datastore_info:
     vcenter_hostname: "{{ vcenter_hostname }}"
@@ -50,23 +58,22 @@
   delegate_to: localhost
   register: datastore_info
 
-# Step 5: Collect Network IDs and Datastore IDs
-- name: Collect network ids
-  ansible.builtin.set_fact:
-    network_ids: "{{ network_ids + item.network | map(attribute='network') | list }}"
-  loop: "{{ network_info.results }}"
+- name: Debug datastore_info
+  ansible.builtin.debug:
+    msg: "{{ datastore_info }}"
 
+# Step 6: Collect Datastore IDs
 - name: Collect datastore ids
   ansible.builtin.set_fact:
-    datastore_ids: "{{ datastore_ids + [item.name] }}"
+    datastore_ids: "{{ datastore_ids + [item.datastore] }}"
   loop: "{{ datastore_info.value }}"
-  when: "'{{ item.name }}' in (vm_details.value | map(attribute='vm') | list)"
+  when: "'{{ item.datastore }}' in (vm_details.value | map(attribute='datastore') | list flatten())"
 
 - name: Ensure network_ids and datastore_ids are captured properly
   ansible.builtin.debug:
     msg: "Network IDs: {{ network_ids | unique }}, Datastore IDs: {{ datastore_ids | unique }}"
 
-# Step 6: Create or Update NetworkMap for Each Unique Network
+# Step 7: Create or Update NetworkMap for Each Unique Network
 - name: Create or update a NetworkMap for each unique network
   redhat.openshift.k8s:
     state: present
@@ -93,7 +100,7 @@
   loop_control:
     label: "{{ item }}"
 
-# Step 7: Create or Update StorageMap for Each Unique Datastore
+# Step 8: Create or Update StorageMap for Each Unique Datastore
 - name: Create or update a StorageMap for each unique datastore
   redhat.openshift.k8s:
     state: present
@@ -120,7 +127,7 @@
   loop_control:
     label: "{{ item }}"
 
-# Step 8: Prepare VMs for Plan Spec
+# Step 9: Prepare VMs for Plan Spec
 - name: Prepare VMs for Plan spec
   ansible.builtin.set_fact:
     vms_for_plan_spec: "{{ vms_for_plan_spec | default([]) + [{'hooks': [], 'id': vm.vm}] }}"
@@ -128,7 +135,7 @@
   loop_control:
     loop_var: vm
 
-# Step 9: Deploy Virt Plan
+# Step 10: Deploy Virt Plan
 - name: Deploy Virt Plan
   redhat.openshift.k8s:
     state: present
@@ -142,35 +149,4 @@
         archived: false
         description: ''
         map:
-          network:
-            name: "{{ networkmap_name }}"
-            namespace: apm0002135-non-prod
-          storage:
-            name: "{{ storagemap_name }}"
-            namespace: apm0002135-non-prod
-        provider:
-          destination:
-            name: local-cluster
-            namespace: apm0002135-non-prod
-          source:
-            name: "{{ provider_name }}"
-            namespace: apm0002135-non-prod
-        targetNamespace: apm0002135-non-prod
-        vms: "{{ vms_for_plan_spec }}"
-        warm: false
-
-# Step 10: Create a Migration Manifest to Run the Plan CR
-- name: Create a Migration manifest to run the Plan CR
-  redhat.openshift.k8s:
-    api_version: forklift.konveyor.io.v1beta1
-    kind: Migration
-    namespace: apm0002135-non-prod
-    name: "{{ plan_name }}"
-    definition:
-      metadata:
-        name: "{{ plan_name }}"
-        namespace: apm0002135-non-prod
-      spec:
-        plan:
-          name: "{{ plan_name }}"
-          namespace: apm0002135-non-prod
+         
