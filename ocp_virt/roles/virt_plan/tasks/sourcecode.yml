@@ -58,7 +58,10 @@
     loop_var: vm_id
   when: vm_id.name in user_selected_vm_names.split('\n')
 
-# Step 7: Get information for the distributed port group 'segment-migrating-to-ocpvirt'
+# Step 7: Fetch Network Information
+# Assuming a step to fetch or verify network information already exists.
+
+# Step 8: Get Distributed Port Group ID for Network Mapping
 - name: Get information for the distributed port group 'segment-migrating-to-ocpvirt'
   vmware.vmware_rest.vcenter_network_info:
     vcenter_hostname: "{{ vcenter_hostname }}"
@@ -68,12 +71,12 @@
     filter_types: DISTRIBUTED_PORTGROUP
   register: my_portgroup
 
-# Step 8: Capture the distributed portgroup id to make network mappings
-- name: Capture the distributed portgroup id to make network mappings
+# Step 9: Capture the Distributed Portgroup ID for Network Mapping
+- name: Capture the distributed portgroup id for Network Mapping
   ansible.builtin.set_fact:
     portgroup_id: "{{ my_portgroup.value[0].network }}"
 
-# Step 9: Create or update a NetworkMap
+# Step 10: Create or Update a NetworkMap Resource
 - name: Create or update a NetworkMap
   redhat.openshift.k8s:
     state: present
@@ -94,48 +97,83 @@
             name: local-cluster
             namespace: apm0002135-non-prod
           source:
-            name: "{{ vmware_host }}"
+            name: vmware
             namespace: apm0002135-non-prod
 
-# Step 10: Build a list of all the datastores
+# Step 11: Build a list of all the datastores
 - name: Build a list of all the datastores
   vmware.vmware_rest.vcenter_datastore_info:
     vcenter_hostname: "{{ vcenter_hostname }}"
     vcenter_username: "{{ vcenter_username }}"
     vcenter_password: "{{ vcenter_password }}"
     vcenter_validate_certs: no
-  register: all_the_datastores
+  register: all_datastores
 
-# Step 11: Capture the datastore id
-- name: Capture the datastore id
+# Step 12: Fetch Detailed Information about VMs including Datastores
+- name: Fetch detailed information about VMs
+  vmware.vmware_rest.vcenter_vm_info:
+    vcenter_hostname: "{{ vcenter_hostname }}"
+    vcenter_username: "{{ vcenter_username }}"
+    vcenter_password: "{{ vcenter_password }}"
+    vcenter_validate_certs: no
+    ids: "{{ vm_name_id_pairs | map(attribute='vm') | list }}"
+  register: vm_details
+
+- name: Debug vm_details
+  ansible.builtin.debug:
+    msg: "{{ vm_details }}"
+
+# Step 13: Collect Datastore Information Used by VMs
+- name: Collect datastore info used by VMs
   ansible.builtin.set_fact:
-    datastore_id: "{{ all_the_datastores.value[0].datastore }}"
+    vm_datastores: >
+      {{
+        vm_details.value |
+        map(attribute='datastore') |
+        map('community.general.dict_kv', key_name='datastore', value_name='keys') |
+        flatten |
+        selectattr('name', 'defined') |
+        list
+      }}
 
-# Step 12: Create or update a StorageMap
-- name: Create or update a StorageMap
+- name: Match and Collect Specific Datastore IDs
+  ansible.builtin.set_fact:
+    mapped_datastores: "{{ mapped_datastores | default({}) | combine({ item.name : item.datastore }) }}"
+  loop: "{{ all_datastores.value }}"
+  when: "item.name in vm_datastores"
+
+- name: Debug Mapped Datastores
+  ansible.builtin.debug:
+    msg: "{{ mapped_datastores }}"
+
+# Step 14: Create or Update a StorageMap for Each Datastore
+- name: Create or update a StorageMap for each unique datastore
   redhat.openshift.k8s:
     state: present
     definition:
       apiVersion: forklift.konveyor.io/v1beta1
       kind: StorageMap
       metadata:
-        name: "{{ storagemap_name }}"
+        name: "{{ storagemap_name }}-{{ loop.index }}"
         namespace: apm0002135-non-prod
       spec:
         map:
           - destination:
               storageClass: portworx-rwx-kubevirt
             source:
-              id: "{{ datastore_id }}"
+              id: "{{ item.datastore }}"
         provider:
           destination:
             name: local-cluster
             namespace: apm0002135-non-prod
           source:
-            name: "{{ vmware_host }}"
+            name: vmware
             namespace: apm0002135-non-prod
+  loop: "{{ mapped_datastores }}"
+  loop_control:
+    label: "{{ item.name }}"
 
-# Step 13: Deploy Virt Plan
+# Step 15: Deploy the Virtualization Plan
 - name: Deploy Virt Plan
   redhat.openshift.k8s:
     state: present
@@ -160,16 +198,16 @@
             name: local-cluster
             namespace: apm0002135-non-prod
           source:
-            name: "{{ vmware_host }}"
+            name: vmware
             namespace: apm0002135-non-prod
         targetNamespace: apm0002135-non-prod
         vms: "{{ vms_for_plan_spec }}"
         warm: false
 
-# Step 14: Create a Migration manifest to run the Plan CR
+# Step 16: Create a Migration Manifest to Run the Plan CR
 - name: Create a Migration manifest to run the Plan CR
   redhat.openshift.k8s:
-    api_version: forklift.konveyor.io/v1beta1
+    api_version: forklift.konveyor.io.v1beta1
     kind: Migration
     namespace: apm0002135-non-prod
     name: "{{ plan_name }}"
@@ -181,4 +219,3 @@
         plan:
           name: "{{ plan_name }}"
           namespace: apm0002135-non-prod
-
