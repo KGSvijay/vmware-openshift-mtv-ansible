@@ -21,7 +21,23 @@
   ansible.builtin.debug:
     msg: "{{ vm_details }}"
 
-# Step 3: Fetch Datastore Information
+# Step 3: Initialize lists for network_ids and datastore_ids
+- name: Initialize lists for network_ids and datastore_ids
+  ansible.builtin.set_fact:
+    network_ids: []
+    datastore_ids: []
+
+# Step 4: Fetch network information for selected VMs
+- name: Fetch network information for selected VMs
+  community.vmware.vmware_vm_info:
+    hostname: "{{ vcenter_hostname }}"
+    username: "{{ vcenter_username }}"
+    password: "{{ vcenter_password }}"
+    validate_certs: no
+    moid: "{{ item.vmid }}"  # Reference the VM ID correctly
+  register: network_info
+  loop: "{{ vm_details.value }}"
+
 - name: Fetch datastore information
   vmware.vmware_rest.vcenter_datastore_info:
     vcenter_hostname: "{{ vcenter_hostname }}"
@@ -30,48 +46,23 @@
     vcenter_validate_certs: no
   register: datastore_info
 
-- name: Debug datastore_info
-  ansible.builtin.debug:
-    msg: "{{ datastore_info }}"
-
-# Step 4: Initialize lists for network_ids and datastore_ids
-- name: Initialize lists for network_ids and datastore_ids
-  ansible.builtin.set_fact:
-    network_ids: []
-    datastore_ids: []
-
-# Step 5: Fetch Network Information for Selected VMs
-- name: Fetch network information for selected VMs
-  community.vmware.vmware_vm_facts:
-    hostname: "{{ vcenter_hostname }}"
-    username: "{{ vcenter_username }}"
-    password: "{{ vcenter_password }}"
-    validate_certs: no
-    vm_guids: "{{ vm_details.value | map(attribute='vm') | list }}"
-  register: vm_facts
-
-- name: Debug vm_facts
-  ansible.builtin.debug:
-    msg: "{{ vm_facts }}"
-
-# Step 6: Collect Network and Datastore IDs
+# Step 5: Collect Network IDs and Datastore IDs
 - name: Collect network ids
   ansible.builtin.set_fact:
     network_ids: "{{ network_ids + item.networks | map(attribute='network') | list }}"
-  loop: "{{ vm_facts | map(attribute='guest.net') | flatten }}"
+  loop: "{{ network_info.results }}"
 
 - name: Collect datastore ids
   ansible.builtin.set_fact:
-    datastore_ids: "{{ datastore_ids + [datastore.name for datastore in datastore_info.value if datastore.datastore in item.datastores] }}"
-  loop: "{{ vm_details.value }}"
-  loop_control:
-    label: "{{ item.name }}"
+    datastore_ids: "{{ datastore_ids + [item.name] }}"
+  loop: "{{ datastore_info.value }}"
+  when: "'{{ item.datastore }}' in (vm_details.value | map(attribute='datastore') | list flatten())"
 
 - name: Ensure network_ids and datastore_ids are captured properly
   ansible.builtin.debug:
     msg: "Network IDs: {{ network_ids | unique }}, Datastore IDs: {{ datastore_ids | unique }}"
 
-# Step 7: Create or Update NetworkMap for Each Unique Network
+# Step 6: Create or Update NetworkMap for Each Unique Network
 - name: Create or update a NetworkMap for each unique network
   redhat.openshift.k8s:
     state: present
@@ -98,12 +89,12 @@
   loop_control:
     label: "{{ item }}"
 
-# Step 8: Create or Update StorageMap for Each Unique Datastore
+# Step 7: Create or Update StorageMap for Each Unique Datastore
 - name: Create or update a StorageMap for each unique datastore
   redhat.openshift.k8s:
     state: present
     definition:
-      apiVersion: forklift.konveyor.io/v1beta1
+      apiVersion: forklift.konveyor.io.v1beta1
       kind: StorageMap
       metadata:
         name: "{{ storagemap_name }}-{{ loop.index }}"
@@ -122,16 +113,18 @@
             name: vmware
             namespace: apm0002135-non-prod
   loop: "{{ datastore_ids | unique }}"
+  loop_control:
+    label: "{{ item }}"
 
-# Step 9: Prepare VMs for Plan Spec
+# Step 8: Prepare VMs for Plan Spec
 - name: Prepare VMs for Plan spec
   ansible.builtin.set_fact:
-    vms_for_plan_spec: "{{ vms_for_plan_spec | default([]) + [{'hooks': [], 'id': vm.vm}] }}"
+    vms_for_plan_spec: "{{ vms_for_plan_spec | default([]) + [{'hooks': [], 'id': vm.vmid }] }}"
   loop: "{{ vm_details.value }}"
   loop_control:
     loop_var: vm
 
-# Step 10: Deploy Virt Plan
+# Step 9: Deploy Virt Plan
 - name: Deploy Virt Plan
   redhat.openshift.k8s:
     state: present
@@ -162,10 +155,10 @@
         vms: "{{ vms_for_plan_spec }}"
         warm: false
 
-# Step 11: Create a Migration Manifest to Run the Plan CR
+# Step 10: Create a Migration Manifest to Run the Plan CR
 - name: Create a Migration manifest to run the Plan CR
   redhat.openshift.k8s:
-    api_version: forklift.konveyor.io/v1beta1
+    api_version: forklift.konveyor.io.v1beta1
     kind: Migration
     namespace: apm0002135-non-prod
     name: "{{ plan_name }}"
