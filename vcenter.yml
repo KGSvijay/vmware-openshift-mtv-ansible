@@ -5,36 +5,33 @@
   tasks:
   
     - name: Check DNS Resolution
-      ansible.builtin.shell: nslookup {{ vcenter_hostname }}
+      ansible.builtin.command: nslookup {{ vcenter_hostname }}
       register: dns_result
       ignore_errors: yes
 
-    - name: Debug DNS Result
+    - name: Debug DNS Resolution
       ansible.builtin.debug:
         var: dns_result.stdout
 
-    - name: Test Connectivity to vCenter on Port 443
+    - name: Test HTTPS Connectivity to vCenter
       ansible.builtin.uri:
         url: https://{{ vcenter_hostname }}
         method: GET
-        status_code: 200
+        timeout: 10
         validate_certs: no
       register: connectivity_result
       ignore_errors: yes
 
-    - name: Debug Connectivity Result
+    - name: Debug HTTPS Connectivity Result
       ansible.builtin.debug:
         var: connectivity_result
 
-    - name: Fetch Detailed Information about vCenter Summary
-      vmware.vmware_rest.vcenter_vcenter_summary_info:
-        hostname: "{{ vcenter_hostname }}"
-        username: "{{ vcenter_username }}"
-        password: "{{ vcenter_password }}"
-        validate_certs: no
-      register: summary_info
+    # Optional: Use ping to see if the vCenter is reachable
+    - name: Test ICMP Ping to vCenter
+      ansible.builtin.command: ping -c 4 {{ vcenter_hostname }}
+      register: ping_result
       ignore_errors: yes
-
-    - name: Debug vCenter Summary Information
+  
+    - name: Debug ICMP Ping Result
       ansible.builtin.debug:
-        var: summary_info
+        var: ping_result.stdout
