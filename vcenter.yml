@@ -12,6 +12,6 @@
         name: "{{ vm_name }}"
       delegate_to: localhost
       register: vm_info
-    
+
     - debug:
-    	var: vm_info.virtual_machines
+        var: vm_info.virtual_machines
