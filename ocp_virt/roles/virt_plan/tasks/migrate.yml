@@ -1,8 +1,8 @@
 - name: Fetch detailed information about VMs
   vmware.vmware_rest.vcenter_vm_info:
-    vcenter_hostname: "{{ vcenter_hostname }}"
-    vcenter_username: "{{ vcenter_username }}"
-    vcenter_password: "{{ vcenter_password }}"
+    vcenter_hostname: https://us-dal-vcenter-nneta-04.us.kworld.kpmg.com/
+    vcenter_username: us-svcvmwareutil@us.kworld.kpmg.com
+    vcenter_password: +2sIJlGFnis*LWQ3[GNM
     vcenter_validate_certs: no
     names: "{{ user_selected_vm_list }}"
   register: vm_details
