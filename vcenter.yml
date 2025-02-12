@@ -1,17 +1,16 @@
 ---
-- name: Test playbook
+- name: Playbook for OpenShift Virt
   hosts: localhost
   
   tasks:
-
-	- name: Gather one specific VM
-	community.vmware.vmware_vm_info:
-		hostname: '{{ vcenter_host }}'
-		username: '{{ vcenter_user }}'
-		password: '{{ vcenter_password }}'
-		vm_name: "{{ vm_name }}"
-	delegate_to: localhost
-	register: vm_info
-	
-	- debug:
-		var: vm_info.virtual_machines
+    - name: Gather one specific VM
+    community.vmware.vmware_vm_info:
+    	hostname: '{{ vcenter_host }}'
+    	username: '{{ vcenter_user }}'
+    	password: '{{ vcenter_password }}'
+    	vm_name: "{{ vm_name }}"
+    delegate_to: localhost
+    register: vm_info
+    
+    - debug:
+    	var: vm_info.virtual_machines
