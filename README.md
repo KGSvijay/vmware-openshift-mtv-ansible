@@ -35,3 +35,12 @@ warm_migration_choice: "cold"  # Choose 'warm' or 'cold'
 Use the Ansible Automation Platform or CLI to execute the playbook:
 ansible-playbook playbooks/main.yml
 
+
+requirements.yml
+
+collections:
+- name: community.vmware
+- name: vmware.vmware_rest
+- name: community.general
+- name: kubevirt.core
+
