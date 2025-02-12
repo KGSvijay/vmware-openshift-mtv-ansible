@@ -1,37 +1,19 @@
----
-- name: Test Connectivity to vCenter
-  hosts: localhost
-  gather_facts: no
-  tasks:
-  
-    - name: Check DNS Resolution
-      ansible.builtin.command: nslookup {{ vcenter_hostname }}
-      register: dns_result
-      ignore_errors: yes
-
-    - name: Debug DNS Resolution
-      ansible.builtin.debug:
-        var: dns_result.stdout
-
-    - name: Test HTTPS Connectivity to vCenter
-      ansible.builtin.uri:
-        url: https://{{ vcenter_hostname }}
-        method: GET
-        timeout: 10
+    - name: Gather VM information
+      community.vmware.vmware_vm_info:
+        hostname: "{{ vcenter_host }}"
+        username: "{{ vcenter_user }}"
+        password: "{{ vcenter_password }}"
         validate_certs: no
-      register: connectivity_result
-      ignore_errors: yes
+        names:
+          - "{{ vm_name }}"
+      register: vm_info
 
-    - name: Debug HTTPS Connectivity Result
-      ansible.builtin.debug:
-        var: connectivity_result
+    - name: Extract datastore information
+      set_fact:
+        datastores: "{{ item.datastore | map(attribute='name') | list }}"
+      loop: "{{ vm_info.vms }}"
+      when: item.name == vm_name
 
-    # Optional: Use ping to see if the vCenter is reachable
-    - name: Test ICMP Ping to vCenter
-      ansible.builtin.command: ping -c 4 {{ vcenter_hostname }}
-      register: ping_result
-      ignore_errors: yes
-  
-    - name: Debug ICMP Ping Result
-      ansible.builtin.debug:
-        var: ping_result.stdout
+    - name: Display datastore information
+      debug:
+        msg: "VM '{{ vm_name }}' is using the following datastores: {{ datastores | join(', ') }}"
