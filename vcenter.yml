@@ -1,0 +1,40 @@
+---
+- name: Test Connectivity to vCenter
+  hosts: localhost
+  gather_facts: no
+  tasks:
+  
+    - name: Check DNS Resolution
+      ansible.builtin.shell: nslookup {{ vcenter_hostname }}
+      register: dns_result
+      ignore_errors: yes
+
+    - name: Debug DNS Result
+      ansible.builtin.debug:
+        var: dns_result.stdout
+
+    - name: Test Connectivity to vCenter on Port 443
+      ansible.builtin.uri:
+        url: https://{{ vcenter_hostname }}
+        method: GET
+        status_code: 200
+        validate_certs: no
+      register: connectivity_result
+      ignore_errors: yes
+
+    - name: Debug Connectivity Result
+      ansible.builtin.debug:
+        var: connectivity_result
+
+    - name: Fetch Detailed Information about vCenter Summary
+      vmware.vmware_rest.vcenter_vcenter_summary_info:
+        hostname: "{{ vcenter_hostname }}"
+        username: "{{ vcenter_username }}"
+        password: "{{ vcenter_password }}"
+        validate_certs: no
+      register: summary_info
+      ignore_errors: yes
+
+    - name: Debug vCenter Summary Information
+      ansible.builtin.debug:
+        var: summary_info
