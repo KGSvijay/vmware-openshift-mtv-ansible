@@ -59,10 +59,7 @@
   when: vm_id.name in user_selected_vm_names.split('\n')
 
 # Step 7: Fetch Network Information
-# Assuming a step to fetch or verify network information already exists.
-
-# Step 8: Get Distributed Port Group ID for Network Mapping
-- name: Get information for the distributed port group 'segment-migrating-to-ocpvirt'
+- name: Get the distributed port group information
   vmware.vmware_rest.vcenter_network_info:
     vcenter_hostname: "{{ vcenter_hostname }}"
     vcenter_username: "{{ vcenter_username }}"
@@ -71,12 +68,11 @@
     filter_types: DISTRIBUTED_PORTGROUP
   register: my_portgroup
 
-# Step 9: Capture the Distributed Portgroup ID for Network Mapping
-- name: Capture the distributed portgroup id for Network Mapping
+- name: Capture the distributed portgroup id to make network mappings
   ansible.builtin.set_fact:
     portgroup_id: "{{ my_portgroup.value[0].network }}"
 
-# Step 10: Create or Update a NetworkMap Resource
+# Step 8: Create or update a NetworkMap
 - name: Create or update a NetworkMap
   redhat.openshift.k8s:
     state: present
@@ -100,7 +96,7 @@
             name: vmware
             namespace: apm0002135-non-prod
 
-# Step 11: Build a list of all the datastores
+# Step 9: Fetch Datastore Information
 - name: Build a list of all the datastores
   vmware.vmware_rest.vcenter_datastore_info:
     vcenter_hostname: "{{ vcenter_hostname }}"
@@ -109,8 +105,12 @@
     vcenter_validate_certs: no
   register: all_datastores
 
-# Step 12: Fetch Detailed Information about VMs including Datastores
-- name: Fetch detailed information about VMs
+- name: Debug all_datastores
+  ansible.builtin.debug:
+    msg: "{{ all_datastores }}"
+
+# Step 10: Collect Detailed VM Information Including Datastores
+- name: Fetch detailed information about VMs including datastores
   vmware.vmware_rest.vcenter_vm_info:
     vcenter_hostname: "{{ vcenter_hostname }}"
     vcenter_username: "{{ vcenter_username }}"
@@ -123,30 +123,22 @@
   ansible.builtin.debug:
     msg: "{{ vm_details }}"
 
-# Step 13: Collect Datastore Information Used by VMs
+# Step 11: Match and Collect Specific Datastore IDs
 - name: Collect datastore info used by VMs
   ansible.builtin.set_fact:
-    vm_datastores: >
-      {{
-        vm_details.value |
-        map(attribute='datastore') |
-        map('community.general.dict_kv', key_name='datastore', value_name='keys') |
-        flatten |
-        selectattr('name', 'defined') |
-        list
-      }}
+    vm_datastores: "{{ vm_details.value | map(attribute='datastore') | flatten | unique }}"
 
-- name: Match and Collect Specific Datastore IDs
+- name: Map VM datastores to datastore IDs
   ansible.builtin.set_fact:
     mapped_datastores: "{{ mapped_datastores | default({}) | combine({ item.name : item.datastore }) }}"
   loop: "{{ all_datastores.value }}"
-  when: "item.name in vm_datastores"
+  when: "item.datastore in vm_datastores"
 
 - name: Debug Mapped Datastores
   ansible.builtin.debug:
     msg: "{{ mapped_datastores }}"
 
-# Step 14: Create or Update a StorageMap for Each Datastore
+# Step 12: Create or update a StorageMap for each datastore used by VMs
 - name: Create or update a StorageMap for each unique datastore
   redhat.openshift.k8s:
     state: present
@@ -173,7 +165,7 @@
   loop_control:
     label: "{{ item.name }}"
 
-# Step 15: Deploy the Virtualization Plan
+# Step 13: Deploy Virtual Plan
 - name: Deploy Virt Plan
   redhat.openshift.k8s:
     state: present
@@ -204,7 +196,7 @@
         vms: "{{ vms_for_plan_spec }}"
         warm: false
 
-# Step 16: Create a Migration Manifest to Run the Plan CR
+# Step 14: Create a Migration Manifest to Run the Plan CR
 - name: Create a Migration manifest to run the Plan CR
   redhat.openshift.k8s:
     api_version: forklift.konveyor.io.v1beta1
