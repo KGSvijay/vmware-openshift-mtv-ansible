@@ -7,9 +7,9 @@
   ansible.builtin.debug:
     msg: "{{ user_selected_vm_list }}"
 
-# Step 2: Fetch Detailed Information about VMs Using `community.vmware.vmware_vm_info`
+# Step 2: Fetch Detailed Information about VMs
 - name: Fetch detailed information about VMs
-  community.vmware.vmware_vm_info:
+  vmware.vmware_guest_info:
     hostname: "{{ vcenter_hostname }}"
     username: "{{ vcenter_username }}"
     password: "{{ vcenter_password }}"
@@ -28,17 +28,38 @@
     network_ids: []
     datastore_ids: []
 
-- name: Collect network and datastore ids
+- name: Fetch network information for selected VMs
+  community.vmware.vmware_guest_network:
+    hostname: "{{ vcenter_hostname }}"
+    username: "{{ vcenter_username }}"
+    password: "{{ vcenter_password }}"
+    validate_certs: no
+    name: "{{ item.name }}"
+  register: network_info
+  loop: "{{ user_selected_vm_list }}"
+
+- name: Fetch datastore information for selected VMs
+  community.vmware.vmware_datastore_info:
+    hostname: "{{ vcenter_hostname }}"
+    username: "{{ vcenter_username }}"
+    password: "{{ vcenter_password }}"
+    validate_certs: no
+  register: datastore_info
+
+- name: Collect network ids
   ansible.builtin.set_fact:
-    network_ids: "{{ network_ids + vm.guest.net | map(attribute='network') | list | unique }}"
-    datastore_ids: "{{ datastore_ids + vm.datastore | list | unique }}"
-  loop: "{{ vm_details.results | map(attribute='virtual_machines') | flatten }}"
-  loop_control:
-    loop_var: vm
+    network_ids: "{{ network_ids + item.networks | map(attribute='network') | list }}"
+  loop: "{{ network_info.results }}"
+
+- name: Collect datastore ids
+  ansible.builtin.set_fact:
+    datastore_ids: "{{ datastore_ids + [item.name] }}"
+  loop: "{{ datastore_info.datastores }}"
+  when: item.name in vm_details.results | map(attribute='datastore') | map('flatten') | list
 
 - name: Ensure network_ids and datastore_ids are captured properly
   ansible.builtin.debug:
-    msg: "Network IDs: {{ network_ids }}, Datastore IDs: {{ datastore_ids }}"
+    msg: "Network IDs: {{ network_ids | unique }}, Datastore IDs: {{ datastore_ids | unique }}"
 
 # Step 4: Create or Update NetworkMap for Each Unique Network
 - name: Create or update a NetworkMap for each unique network
@@ -63,7 +84,7 @@
           source:
             name: "{{ provider_name }}"
             namespace: apm0002135-non-prod
-  loop: "{{ network_ids }}"
+  loop: "{{ network_ids | unique }}"
 
 # Step 5: Create or Update StorageMap for Each Unique Datastore
 - name: Create or update a StorageMap for each unique datastore
@@ -88,13 +109,13 @@
           source:
             name: "{{ provider_name }}"
             namespace: apm0002135-non-prod
-  loop: "{{ datastore_ids }}"
+  loop: "{{ datastore_ids | unique }}"
 
-# Step 6: Prepare VMs for Plan Spec Based on vm_details
+# Step 6: Prepare VMs for Plan Spec
 - name: Prepare VMs for Plan spec
   ansible.builtin.set_fact:
-    vms_for_plan_spec: "{{ vms_for_plan_spec | default([]) + [{'hooks': [], 'id': vm.vm }] }}"
-  loop: "{{ vm_details.results | map(attribute='virtual_machines') | flatten }}"
+    vms_for_plan_spec: "{{ vms_for_plan_spec | default([]) + [{'hooks': [], 'id': vm.vm}] }}"
+  loop: "{{ vm_details.results }}"
   loop_control:
     loop_var: vm
 
