@@ -1,17 +1,20 @@
+---
+- name: Gather VM datastore information from vCenter
+  hosts: localhost
+  gather_facts: no
+  
+  tasks:
     - name: Gather VM information
-      community.vmware.vmware_vm_info:
+      community.vmware.vmware_guest_info:
         hostname: "{{ vcenter_host }}"
         username: "{{ vcenter_user }}"
         password: "{{ vcenter_password }}"
-        vm_name: "{{ vm_name }}"
-      delegate_to: localhost
+        name: "{{ vm_name }}"
       register: vm_info
 
     - name: Extract datastore information
       set_fact:
-        datastores: "{{ item.datastore | map(attribute='name') | list }}"
-      loop: "{{ vm_info.vms }}"
-      when: item.name == vm_name
+        datastores: "{{ vm_info.instance.datastore | map(attribute='name') | list }}"
 
     - name: Display datastore information
       debug:
