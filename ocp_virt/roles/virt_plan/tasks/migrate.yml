@@ -1,8 +1,18 @@
+# Step 1: Convert User-Selected VM Names to List
+- name: Convert user-selected VM names to list
+  ansible.builtin.set_fact:
+    user_selected_vm_list: "{{ user_selected_vm_names.split('\n') | map('trim') }}"
+
+- name: Debug user_selected_vm_list
+  ansible.builtin.debug:
+    msg: "{{ user_selected_vm_list }}"
+
+# Step 2: Fetch Detailed Information about VMs
 - name: Fetch detailed information about VMs
   vmware.vmware_rest.vcenter_vm_info:
-    vcenter_hostname: https://us-dal-vcenter-nneta-04.us.kworld.kpmg.com/
-    vcenter_username: us-svcvmwareutil@us.kworld.kpmg.com
-    vcenter_password: +2sIJlGFnis*LWQ3[GNM
+    vcenter_hostname: "{{ vcenter_hostname }}"
+    vcenter_username: "{{ vcenter_username }}"
+    vcenter_password: "{{ vcenter_password }}"
     vcenter_validate_certs: no
     names: "{{ user_selected_vm_list }}"
   register: vm_details
@@ -10,3 +20,160 @@
 - name: Debug vm_details
   ansible.builtin.debug:
     msg: "{{ vm_details }}"
+
+# Step 3: Fetch Datastore Information
+- name: Fetch datastore information
+  vmware.vmware_rest.vcenter_datastore_info:
+    vcenter_hostname: "{{ vcenter_hostname }}"
+    vcenter_username: "{{ vcenter_username }}"
+    vcenter_password: "{{ vcenter_password }}"
+    vcenter_validate_certs: no
+  register: datastore_info
+
+- name: Debug datastore_info
+  ansible.builtin.debug:
+    msg: "{{ datastore_info }}"
+
+# Step 4: Initialize lists for network_ids and datastore_ids
+- name: Initialize lists for network_ids and datastore_ids
+  ansible.builtin.set_fact:
+    network_ids: []
+    datastore_ids: []
+
+# Step 5: Fetch Network Information for Selected VMs
+- name: Fetch network information for selected VMs
+  community.vmware.vmware_vm_facts:
+    hostname: "{{ vcenter_hostname }}"
+    username: "{{ vcenter_username }}"
+    password: "{{ vcenter_password }}"
+    validate_certs: no
+    vm_guids: "{{ vm_details.value | map(attribute='vm') | list }}"
+  register: vm_facts
+
+- name: Debug vm_facts
+  ansible.builtin.debug:
+    msg: "{{ vm_facts }}"
+
+# Step 6: Collect Network and Datastore IDs
+- name: Collect network ids
+  ansible.builtin.set_fact:
+    network_ids: "{{ network_ids + item.networks | map(attribute='network') | list }}"
+  loop: "{{ vm_facts | map(attribute='guest.net') | flatten }}"
+
+- name: Collect datastore ids
+  ansible.builtin.set_fact:
+    datastore_ids: "{{ datastore_ids + [datastore.name for datastore in datastore_info.value if datastore.datastore in item.datastores] }}"
+  loop: "{{ vm_details.value }}"
+  loop_control:
+    label: "{{ item.name }}"
+
+- name: Ensure network_ids and datastore_ids are captured properly
+  ansible.builtin.debug:
+    msg: "Network IDs: {{ network_ids | unique }}, Datastore IDs: {{ datastore_ids | unique }}"
+
+# Step 7: Create or Update NetworkMap for Each Unique Network
+- name: Create or update a NetworkMap for each unique network
+  redhat.openshift.k8s:
+    state: present
+    definition:
+      apiVersion: forklift.konveyor.io/v1beta1
+      kind: NetworkMap
+      metadata:
+        name: "{{ networkmap_name }}-{{ loop.index }}"
+        namespace: apm0002135-non-prod
+      spec:
+        map:
+          - destination:
+              type: pod
+            source:
+              id: "{{ item }}"
+        provider:
+          destination:
+            name: local-cluster
+            namespace: apm0002135-non-prod
+          source:
+            name: vmware
+            namespace: apm0002135-non-prod
+  loop: "{{ network_ids | unique }}"
+  loop_control:
+    label: "{{ item }}"
+
+# Step 8: Create or Update StorageMap for Each Unique Datastore
+- name: Create or update a StorageMap for each unique datastore
+  redhat.openshift.k8s:
+    state: present
+    definition:
+      apiVersion: forklift.konveyor.io/v1beta1
+      kind: StorageMap
+      metadata:
+        name: "{{ storagemap_name }}-{{ loop.index }}"
+        namespace: apm0002135-non-prod
+      spec:
+        map:
+          - destination:
+              storageClass: portworx-rwx-kubevirt
+            source:
+              id: "{{ item }}"
+        provider:
+          destination:
+            name: local-cluster
+            namespace: apm0002135-non-prod
+          source:
+            name: vmware
+            namespace: apm0002135-non-prod
+  loop: "{{ datastore_ids | unique }}"
+
+# Step 9: Prepare VMs for Plan Spec
+- name: Prepare VMs for Plan spec
+  ansible.builtin.set_fact:
+    vms_for_plan_spec: "{{ vms_for_plan_spec | default([]) + [{'hooks': [], 'id': vm.vm}] }}"
+  loop: "{{ vm_details.value }}"
+  loop_control:
+    loop_var: vm
+
+# Step 10: Deploy Virt Plan
+-	name:	Deploy	Virt	Plan
+    redhat.openshift.k8s:
+        state:	present
+        definition:
+            apiVersion:	forklift.konveyor.io/v1beta1
+            kind:	Plan
+            metadata:
+                name:	"{{	plan_name	}}"
+                namespace:	apm0002135-non-prod
+            spec:
+                archived:	false
+                description:	''
+                map:
+                    network:
+                        name:	"{{	networkmap_name	}}"
+                        namespace:	apm0002135-non-prod
+                    storage:
+                        name:	"{{	storagemap_name	}}"
+                        namespace:	apm0002135-non-prod
+                provider:
+                    destination:
+                        name:	local-cluster
+                        namespace:	apm0002135-non-prod
+                    source:
+                        name:	"{{	provider_name	}}"
+                        namespace:	apm0002135-non-prod
+                targetNamespace:	apm0002135-non-prod
+                vms:	"{{	vms_for_plan_spec	}}"
+                warm:	false
+
+# Step 11: Create a Migration Manifest to Run the Plan CR
+- name: Create a Migration manifest to run the Plan CR
+  redhat.openshift.k8s:
+    api_version: forklift.konveyor.io/v1beta1
+    kind: Migration
+    namespace: apm0002135-non-prod
+    name: "{{ plan_name }}"
+    definition:
+      metadata:
+        name: "{{ plan_name }}"
+        namespace: apm0002135-non-prod
+      spec:
+        plan:
+          name: "{{ plan_name }}"
+          namespace: apm0002135-non-prod
