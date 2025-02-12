@@ -31,7 +31,7 @@
 
 # Step 4: Fetch Network Information using vmware_guest_info (vmware.vmware)
 - name: Fetch network information for selected VMs
-  vmware.vmware_guest_info:
+  vmware.vmware.guest_info:
     hostname: "{{ vcenter_hostname }}"
     username: "{{ vcenter_username }}"
     password: "{{ vcenter_password }}"
