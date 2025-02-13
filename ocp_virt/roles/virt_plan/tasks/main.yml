@@ -2,5 +2,5 @@
 # tasks file for virt-plan
 #- include_tasks: 10_create_virt_plan.yml
 #- include_tasks: migrate.yml
-#- include_tasks: sourcecode.yml
-- include_tasks: Test.yml
+- include_tasks: sourcecode.yml
+#- include_tasks: Test.yml
