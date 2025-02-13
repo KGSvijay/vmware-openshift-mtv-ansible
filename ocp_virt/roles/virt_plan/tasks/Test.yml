@@ -38,11 +38,6 @@
   delegate_to: localhost
   register: datastore_info
 
-# Step 5: Collect Network IDs and Datastore IDs
-- name: Collect network ids
-  ansible.builtin.set_fact:
-    network_ids: "{{ network_ids + item.guest_net | map(attribute='network') | list }}"
-  loop: "{{ network_info.results }}"
 
 - name: Collect datastore ids
   ansible.builtin.set_fact:
@@ -52,7 +47,7 @@
 
 - name: Ensure network_ids and datastore_ids are captured properly
   ansible.builtin.debug:
-    msg: "Network IDs: {{ network_ids | unique }}, Datastore IDs: {{ datastore_ids | unique }}"
+    msg: " Datastore IDs: {{ datastore_ids | unique }}"
 
 
 
