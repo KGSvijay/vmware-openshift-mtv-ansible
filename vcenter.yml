@@ -1,13 +1,29 @@
+# roles/your_role_name/tasks/main.yml
 ---
 - name: Gather VM datastore information from vCenter
   hosts: localhost
   gather_facts: no
 
   tasks:
-    - name: Build a list of all the datastores
+    - name: Authenticate to vCenter
       vmware.vmware_rest.vcenter_datastore_info:
-      register: all_the_datastores
+        hostname: "{{ vcenter_host }}"
+        username: "{{ vcenter_user }}"
+        password: "{{ vcenter_password }}"
+      register: vcenter_info
 
-    - name: Capture the datastore id
+    - name: Gather all datastore information
+      vmware.vmware_rest.vcenter_datastore_info:
+        hostname: "{{ vcenter_host }}"
+        username: "{{ vcenter_user }}"
+        password: "{{ vcenter_password }}"
+        validate_certs: false
+      register: datastore_info
+
+    - name: Find datastores for the specific VM
       set_fact:
-        datastore_id: "{{ all_the_datastores.value[0].datastore }}"
+        vm_datastores: "{{ datastore_info.datastores | selectattr('vm', 'eq', vm_name) | map(attribute='name') | list }}"
+
+    - name: Display datastore information
+      debug:
+        msg: "VM '{{ vm_name }}' is using the following datastores: {{ vm_datastores | join(', ') }}"
