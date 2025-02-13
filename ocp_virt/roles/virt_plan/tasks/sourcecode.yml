@@ -105,9 +105,13 @@
   ansible.builtin.debug:
     msg: "{{ all_datastores }}"
 
+#########################################
+
+---
+
 # Ensure user_selected_vm_names is defined and split into a list
 - name: Ensure user_selected_vm_names is a list
-  set_fact:
+  ansible.builtin.set_fact:
     user_selected_vm_names_list: "{{ user_selected_vm_names.split('\n') }}"
 
 # Step 10: Collect Detailed VM Information Including Datastores
@@ -124,14 +128,14 @@
   ansible.builtin.debug:
     msg: "{{ vm_details_list }}"
 
-
-# Collect datastore info used by VMs
+# Step 11: Collect Datastore Info Used by VMs
 - name: Collect datastore info used by VMs
   ansible.builtin.set_fact:
     vm_datastores: >
       {{
         vm_details_list.value |
-        map(attribute='datastores') |
+        map(attribute='disks') |                  
+        map('json_query', '[*].backing.datastore') |  
         flatten |
         unique |
         select('defined') |
@@ -142,15 +146,7 @@
   ansible.builtin.debug:
     msg: "{{ vm_datastores }}"
 
-# Debug statements to verify the contents of all_datastores and vm_datastores
-- name: Debug all_datastores to verify contents
-  ansible.builtin.debug:
-    msg: "{{ all_datastores.value }}"
-
-- name: Debug vm_datastores to verify contents
-  ansible.builtin.debug:
-    msg: "{{ vm_datastores }}"
-
+# Map VM datastores to datastore IDs
 - name: Map VM datastores to datastore IDs
   ansible.builtin.set_fact:
     mapped_datastores: "{{ mapped_datastores | default([]) + [{'name': item.name, 'datastore_id': item.datastore}] }}"
@@ -161,6 +157,10 @@
   ansible.builtin.debug:
     msg: "{{ mapped_datastores }}"
 
+
+
+
+#########################################
 
 # Step 13: Create or update a StorageMap for each datastore used by VMs
 - name: Create or update a StorageMap for each unique datastore
