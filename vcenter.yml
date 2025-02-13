@@ -3,4 +3,4 @@
   tasks:
     - name: Download a Role from Ansible Galaxy
       ansible.builtin.command:
-        cmd: "ansible-galaxy install geerlingguy.apache"
+        cmd: "ansible-galaxy install community.vmware"
