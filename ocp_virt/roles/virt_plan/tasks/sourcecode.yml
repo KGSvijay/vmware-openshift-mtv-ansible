@@ -93,7 +93,7 @@
             name: local-cluster
             namespace: apm0002135-non-prod
           source:
-            name: vmware
+            name: " {{ vmware_host }} "
             namespace: apm0002135-non-prod
 
 # Step 9: Fetch Datastore Information
@@ -108,7 +108,11 @@
 # Step 10: Collect Detailed VM Information Including Datastores
 - name: Fetch detailed information about VMs including datastores
   vmware.vmware_rest.vcenter_vm_info:
-    ids: "{{ vm_name_id_pairs | map(attribute='vm') | list }}"
+    vcenter_hostname: "{{ vcenter_hostname }}"
+    vcenter_username: "{{ vcenter_username }}"
+    vcenter_password: "{{ vcenter_password }}"
+    vcenter_validate_certs: no
+    names: "{{ user_selected_vm_list }}"
   register: vm_details
 
 - name: Debug vm_details
@@ -118,11 +122,24 @@
 # Step 11: Match and Collect Specific Datastore IDs
 - name: Collect datastore info used by VMs
   ansible.builtin.set_fact:
-    vm_datastores: "{{ vm_details.value | map(attribute='datastore') | flatten | unique }}"
+    vm_datastores: >
+      {{
+        vm_details.value |
+        map(attribute='datastores') |
+        flatten |
+        unique |
+        select('defined') |
+        list
+      }}
 
+- name: Debug Collect VM Datastores
+  ansible.builtin.debug:
+    msg: "{{ vm_datastores }}"
+
+# Step 12: Match Datastores with Collected Datastore IDs
 - name: Map VM datastores to datastore IDs
   ansible.builtin.set_fact:
-    mapped_datastores: "{{ mapped_datastores | default({}) | combine({ item.name : item.datastore }) }}"
+    mapped_datastores: "{{ mapped_datastores | default([]) + [{'name': item.name, 'datastore_id': item.datastore}] }}"
   loop: "{{ all_datastores.value }}"
   when: "item.datastore in vm_datastores"
 
@@ -130,7 +147,7 @@
   ansible.builtin.debug:
     msg: "{{ mapped_datastores }}"
 
-# Step 12: Create or update a StorageMap for each datastore used by VMs
+# Step 13: Create or update a StorageMap for each datastore used by VMs
 - name: Create or update a StorageMap for each unique datastore
   redhat.openshift.k8s:
     state: present
@@ -145,19 +162,19 @@
           - destination:
               storageClass: portworx-rwx-kubevirt
             source:
-              id: "{{ item.datastore }}"
+              id: "{{ item.datastore_id }}"
         provider:
           destination:
             name: local-cluster
             namespace: apm0002135-non-prod
           source:
-            name: vmware
+            name: " {{ vmware_host }} "
             namespace: apm0002135-non-prod
   loop: "{{ mapped_datastores }}"
   loop_control:
     label: "{{ item.name }}"
 
-# Step 13: Deploy Virtual Plan
+# Step 14: Deploy the Virtualization Plan
 - name: Deploy Virt Plan
   redhat.openshift.k8s:
     state: present
@@ -182,13 +199,13 @@
             name: local-cluster
             namespace: apm0002135-non-prod
           source:
-            name: vmware
+            name: " {{ vmware_host }} "
             namespace: apm0002135-non-prod
         targetNamespace: apm0002135-non-prod
         vms: "{{ vms_for_plan_spec }}"
         warm: false
 
-# Step 14: Create a Migration Manifest to Run the Plan CR
+# Step 15: Create a Migration Manifest to Run the Plan CR
 - name: Create a Migration manifest to run the Plan CR
   redhat.openshift.k8s:
     api_version: forklift.konveyor.io.v1beta1
