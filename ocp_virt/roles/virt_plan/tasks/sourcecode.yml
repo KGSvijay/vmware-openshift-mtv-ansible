@@ -131,7 +131,7 @@
     vm_datastores: >
       {{
         vm_details_list.value |
-        map(attribute='datastores') |  # Ensure this matches the structure from vm_details_list
+        map(attribute='datastores') |
         flatten |
         unique |
         select('defined') |
