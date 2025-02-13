@@ -94,7 +94,7 @@
             name: local-cluster
             namespace: apm0002135-non-prod
           source:
-            name: " {{ vmware_host }} "
+            name: "{{ provider_name }}"
             namespace: apm0002135-non-prod
 
 # Step 9: Hardcode Datastore Information
@@ -123,7 +123,7 @@
             name: local-cluster
             namespace: apm0002135-non-prod
           source:
-            name: "{{ vmware_host }}"
+            name: "{{ provider_name }}"
             namespace: apm0002135-non-prod
 
 # Step 11: Deploy the Virtualization Plan
@@ -151,7 +151,7 @@
             name: local-cluster
             namespace: apm0002135-non-prod
           source:
-            name: "{{ vmware_host }}"
+            name: "{{ provider_name }}"
             namespace: apm0002135-non-prod
         targetNamespace: apm0002135-non-prod
         vms: "{{ vms_for_plan_spec }}"
