@@ -136,7 +136,15 @@
   ansible.builtin.debug:
     msg: "{{ vm_datastores }}"
 
-# Step 12: Match Datastores with Collected Datastore IDs
+# Debug statements to verify the contents of all_datastores and vm_datastores
+- name: Debug all_datastores to verify contents
+  ansible.builtin.debug:
+    msg: "{{ all_datastores.value }}"
+
+- name: Debug vm_datastores to verify contents
+  ansible.builtin.debug:
+    msg: "{{ vm_datastores }}"
+
 - name: Map VM datastores to datastore IDs
   ansible.builtin.set_fact:
     mapped_datastores: "{{ mapped_datastores | default([]) + [{'name': item.name, 'datastore_id': item.datastore}] }}"
@@ -146,6 +154,7 @@
 - name: Debug Mapped Datastores
   ansible.builtin.debug:
     msg: "{{ mapped_datastores }}"
+
 
 # Step 13: Create or update a StorageMap for each datastore used by VMs
 - name: Create or update a StorageMap for each unique datastore
