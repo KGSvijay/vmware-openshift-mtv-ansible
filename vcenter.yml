@@ -1,30 +1,6 @@
-# roles/your_role_name/tasks/main.yml
----
-- name: Gather VM datastore information from vCenter
-  gather_facts: no
-  vars:
-    vm_name: "{{ vm_name }}"               # Name of the VM to fetch details for
- 
+- name: Test Galaxy Connection
+  hosts: localhost
   tasks:
-    - name: Authenticate to vCenter and gather all datastore information
-      vmware.vmware_rest.vcenter_datastore_info:
-        vcenter_hostname: "{{ vcenter_host }}"
-        vcenter_username: "{{ vcenter_user }}"
-        vcenter_password: "{{ vcenter_password }}"
-        validate_certs: false
-      register: datastore_info
-
-    - name: Find datastores for the specific VM
-      set_fact:
-        vm_datastores: >-
-          {{
-            datastore_info.datastore_info
-            | selectattr('vm', 'defined')
-            | selectattr('vm', 'contains', vm_name)
-            | map(attribute='name')
-            | list
-          }}
-
-    - name: Display datastore information
-      debug:
-        msg: "VM '{{ vm_name }}' is using the following datastores: {{ vm_datastores | join(', ') }}"
+    - name: Download a Role from Ansible Galaxy
+      ansible.builtin.command:
+        cmd: "ansible-galaxy install geerlingguy.apache"
