@@ -1,4 +1,5 @@
 ---
+
 # Step 1: Build a list of all the folders
 - name: Build a list of all the folders
   vmware.vmware_rest.vcenter_folder_info:
@@ -56,7 +57,7 @@
   loop: "{{ vm_name_id_pairs }}"
   loop_control:
     loop_var: vm_id
-  when: vm_id.name in user_selected_vm_names.split('\n')
+  when: vm_id.name in user_selected_vm_names.splitlines()
 
 # Step 7: Fetch Network Information
 - name: Get the distributed port group information
@@ -96,98 +97,36 @@
             name: " {{ vmware_host }} "
             namespace: apm0002135-non-prod
 
-# Step 9: Fetch Datastore Information
-- name: Build a list of all the datastores
-  vmware.vmware_rest.vcenter_datastore_info:
-  register: all_datastores
-
-- name: Debug all_datastores
-  ansible.builtin.debug:
-    msg: "{{ all_datastores }}"
-
-#########################################
-
-# Ensure user_selected_vm_names is defined and split into a list
-- name: Ensure user_selected_vm_names is a list
+# Step 9: Hardcode Datastore Information
+- name: Set hardcoded datastore information
   ansible.builtin.set_fact:
-    user_selected_vm_names_list: "{{ user_selected_vm_names.split('\n') }}"
+    hardcoded_datastore: "PURE_P10C4-Non-Production_18"
 
-# Step 10: Collect Detailed VM Information Including Datastores
-- name: Fetch detailed information about VMs
-  vmware.vmware_rest.vcenter_vm_info:
-    vcenter_hostname: "{{ vcenter_hostname }}"
-    vcenter_username: "{{ vcenter_username }}"
-    vcenter_password: "{{ vcenter_password }}"
-    vcenter_validate_certs: no
-    filter_names: "{{ user_selected_vm_names_list }}"
-  register: vm_details_list
-
-- name: Debug vm_details_list
-  ansible.builtin.debug:
-    msg: "{{ vm_details_list }}"
-
-# Step 11: Collect Datastore Info Used by VMs
-- name: Collect datastore info used by VMs
-  ansible.builtin.set_fact:
-    vm_datastores: >
-      {{
-        vm_details_list.value |
-        map(attribute='disks') |                  
-        map('json_query', '[*].backing.datastore') |  
-        flatten |
-        unique |
-        select('defined') |
-        list
-      }}
-
-- name: Debug Collect VM Datastores
-  ansible.builtin.debug:
-    msg: "{{ vm_datastores }}"
-
-# Map VM datastores to datastore IDs
-- name: Map VM datastores to datastore IDs
-  ansible.builtin.set_fact:
-    mapped_datastores: "{{ mapped_datastores | default([]) + [{'name': item.name, 'datastore_id': item.datastore}] }}"
-  loop: "{{ all_datastores.value }}"
-  when: "item.datastore in vm_datastores"
-
-- name: Debug Mapped Datastores
-  ansible.builtin.debug:
-    msg: "{{ mapped_datastores }}"
-
-
-
-
-#########################################
-
-# Step 13: Create or update a StorageMap for each datastore used by VMs
-- name: Create or update a StorageMap for each unique datastore
+# Step 10: Create or update a StorageMap with hardcoded datastore
+- name: Create or update a StorageMap
   redhat.openshift.k8s:
     state: present
     definition:
       apiVersion: forklift.konveyor.io/v1beta1
       kind: StorageMap
       metadata:
-        name: "{{ storagemap_name }}-{{ loop.index }}"
+        name: "{{ storagemap_name }}"
         namespace: apm0002135-non-prod
       spec:
         map:
           - destination:
               storageClass: portworx-rwx-kubevirt
             source:
-              id: "{{ item.datastore_id }}"
+              id: "{{ hardcoded_datastore }}"
         provider:
           destination:
             name: local-cluster
             namespace: apm0002135-non-prod
           source:
-            name: " {{ vmware_host }} "
+            name: "{{ vmware_host }}"
             namespace: apm0002135-non-prod
-  loop: "{{ mapped_datastores }}"
-  loop_control:
-    label: "{{ item.name }}"
 
-# Step 14: Deploy the Virtualization Plan
+# Step 11: Deploy the Virtualization Plan
 - name: Deploy Virt Plan
   redhat.openshift.k8s:
     state: present
@@ -212,20 +151,19 @@
             name: local-cluster
             namespace: apm0002135-non-prod
           source:
-            name: " {{ vmware_host }} "
+            name: "{{ vmware_host }}"
             namespace: apm0002135-non-prod
         targetNamespace: apm0002135-non-prod
         vms: "{{ vms_for_plan_spec }}"
         warm: false
 
-# Step 15: Create a Migration Manifest to Run the Plan CR
+# Step 12: Create a Migration Manifest to Run the Plan CR
 - name: Create a Migration manifest to run the Plan CR
   redhat.openshift.k8s:
-    api_version: forklift.konveyor.io.v1beta1
-    kind: Migration
-    namespace: apm0002135-non-prod
-    name: "{{ plan_name }}"
+    state: present
     definition:
+      apiVersion: forklift.konveyor.io/v1beta1
+      kind: Migration
       metadata:
         name: "{{ plan_name }}"
         namespace: apm0002135-non-prod
