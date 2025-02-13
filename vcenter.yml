@@ -5,13 +5,17 @@
 
   tasks:
     - name: Gather VM information
-      community.vmware.vmware_vm_info:
+      vmware_guest_info:
         hostname: "{{ vcenter_host }}"
         username: "{{ vcenter_user }}"
         password: "{{ vcenter_password }}"
         name: "{{ vm_name }}"
-      delegate_to: localhost
       register: vm_info
 
-    - debug:
-        var: vm_info.virtual_machines
+    - name: Extract datastore information
+      set_fact:
+        datastores: "{{ vm_info.instance.datastore | map(attribute='name') | list }}"
+
+    - name: Display datastore information
+      debug:
+        msg: "VM '{{ vm_name }}' is using the following datastores: {{ datastores | join(', ') }}"
