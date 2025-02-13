@@ -38,16 +38,24 @@
   delegate_to: localhost
   register: datastore_info
 
+- name: Collect datastore IDs from VM details
+  set_fact:
+    vm_datastore_ids: "{{ vm_details.value.datastore | map(attribute='datastore_id') | list }}"
 
-- name: Collect datastore ids
-  ansible.builtin.set_fact:
-    datastore_ids: "{{ datastore_ids + [item.name] }}"
-  loop: "{{ datastore_info.value }}"
-  when: "'{{ item.datastore }}' in (vm_details.value | map(attribute='datastore') | list flatten())"
+- name: Find the datastore names used by the VM
+  set_fact:
+    vm_datastores: >-
+      {{
+        datastore_info.datastores
+        | selectattr('datastore', 'defined')
+        | selectattr('datastore_id', 'in', vm_datastore_ids)
+        | map(attribute='name')
+        | list
+      }}
 
-- name: Ensure network_ids and datastore_ids are captured properly
-  ansible.builtin.debug:
-    msg: " Datastore IDs: {{ datastore_ids | unique }}"
+- name: Display datastore information for the VM
+  debug:
+    msg: "VM '{{ user_selected_vm_list }}' is using the following datastores: {{ vm_datastores | join(', ') }}"
 
 
 
