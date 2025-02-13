@@ -107,8 +107,6 @@
 
 #########################################
 
----
-
 # Ensure user_selected_vm_names is defined and split into a list
 - name: Ensure user_selected_vm_names is a list
   ansible.builtin.set_fact:
