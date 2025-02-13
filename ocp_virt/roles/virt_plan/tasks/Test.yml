@@ -1,7 +1,7 @@
 # Step 1: Convert User-Selected VM Names to List
 - name: Convert user-selected VM names to list
   ansible.builtin.set_fact:
-    user_selected_vm_list: "{{  }}"
+    user_selected_vm_list: "{{ user_selected_vm_list }}"
 
 - name: Debug user_selected_vm_list
   ansible.builtin.debug:
