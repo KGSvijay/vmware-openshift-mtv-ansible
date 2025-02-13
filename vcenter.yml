@@ -4,13 +4,13 @@
   gather_facts: no
   vars:
     vm_name: "{{ vm_name }}"               # Name of the VM to fetch details for
-
+ 
   tasks:
     - name: Authenticate to vCenter and gather all datastore information
       vmware.vmware_rest.vcenter_datastore_info:
-        hostname: "{{ vcenter_host }}"
-        username: "{{ vcenter_user }}"
-        password: "{{ vcenter_password }}"
+        vcenter_hostname: "{{ vcenter_host }}"
+        vcenter_username: "{{ vcenter_user }}"
+        vcenter_password: "{{ vcenter_password }}"
         validate_certs: false
       register: datastore_info
 
