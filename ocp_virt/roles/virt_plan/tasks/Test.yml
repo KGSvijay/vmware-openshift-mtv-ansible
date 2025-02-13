@@ -1,1 +1,61 @@
+# Step 1: Convert User-Selected VM Names to List
+- name: Convert user-selected VM names to list
+  ansible.builtin.set_fact:
+    user_selected_vm_list: "{{  }}"
+
+- name: Debug user_selected_vm_list
+  ansible.builtin.debug:
+    msg: "{{ user_selected_vm_list }}"
+
+# Step 2: Fetch Detailed Information about VMs
+- name: Fetch detailed information about VMs
+  vmware.vmware_rest.vcenter_vm_info:
+    vcenter_hostname: "{{ vcenter_hostname }}"
+    vcenter_username: "{{ vcenter_username }}"
+    vcenter_password: "{{ vcenter_password }}"
+    vcenter_validate_certs: no
+    names: "{{ user_selected_vm_list }}"
+  delegate_to: localhost
+  register: vm_details
+
+- name: Debug vm_details
+  ansible.builtin.debug:
+    msg: "{{ vm_details }}"
+
+# Step 3: Initialize lists for network_ids and datastore_ids
+- name: Initialize lists for network_ids and datastore_ids
+  ansible.builtin.set_fact:
+    network_ids: []
+    datastore_ids: []
+
+
+- name: Fetch datastore information
+  vmware.vmware_rest.vcenter_datastore_info:
+    vcenter_hostname: "{{ vcenter_hostname }}"
+    vcenter_username: "{{ vcenter_username }}"
+    vcenter_password: "{{ vcenter_password }}"
+    vcenter_validate_certs: no
+  delegate_to: localhost
+  register: datastore_info
+
+# Step 5: Collect Network IDs and Datastore IDs
+- name: Collect network ids
+  ansible.builtin.set_fact:
+    network_ids: "{{ network_ids + item.guest_net | map(attribute='network') | list }}"
+  loop: "{{ network_info.results }}"
+
+- name: Collect datastore ids
+  ansible.builtin.set_fact:
+    datastore_ids: "{{ datastore_ids + [item.name] }}"
+  loop: "{{ datastore_info.value }}"
+  when: "'{{ item.datastore }}' in (vm_details.value | map(attribute='datastore') | list flatten())"
+
+- name: Ensure network_ids and datastore_ids are captured properly
+  ansible.builtin.debug:
+    msg: "Network IDs: {{ network_ids | unique }}, Datastore IDs: {{ datastore_ids | unique }}"
+
+
+
+
+
 
