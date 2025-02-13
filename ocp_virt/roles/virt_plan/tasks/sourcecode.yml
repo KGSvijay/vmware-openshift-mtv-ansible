@@ -105,27 +105,33 @@
   ansible.builtin.debug:
     msg: "{{ all_datastores }}"
 
+# Ensure user_selected_vm_names is defined and split into a list
+- name: Ensure user_selected_vm_names is a list
+  set_fact:
+    user_selected_vm_names_list: "{{ user_selected_vm_names.split('\n') }}"
+
 # Step 10: Collect Detailed VM Information Including Datastores
-- name: Fetch detailed information about VMs including datastores
-  vmware.vmware_rest.vcenter_datastore_info:
+- name: Fetch detailed information about VMs
+  vmware.vmware_rest.vcenter_vm_info:
     vcenter_hostname: "{{ vcenter_hostname }}"
     vcenter_username: "{{ vcenter_username }}"
     vcenter_password: "{{ vcenter_password }}"
     vcenter_validate_certs: no
-    names: "{{ user_selected_vm_names }}"
-  register: vm_details
+    filter_names: "{{ user_selected_vm_names_list }}"
+  register: vm_details_list
 
-- name: Debug vm_details
+- name: Debug vm_details_list
   ansible.builtin.debug:
-    msg: "{{ vm_details }}"
+    msg: "{{ vm_details_list }}"
 
-# Step 11: Match and Collect Specific Datastore IDs
+
+# Collect datastore info used by VMs
 - name: Collect datastore info used by VMs
   ansible.builtin.set_fact:
     vm_datastores: >
       {{
-        vm_details.value |
-        map(attribute='datastores') |
+        vm_details_list.value |
+        map(attribute='datastores') |  # Ensure this matches the structure from vm_details_list
         flatten |
         unique |
         select('defined') |
