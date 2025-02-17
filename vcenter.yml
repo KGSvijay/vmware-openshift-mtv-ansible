@@ -1,6 +1,19 @@
-- name: Test Galaxy Connection
+---
+- name: Test if community.vmware collection works
   hosts: localhost
+  gather_facts: no
+  collections:
+    - community.vmware
   tasks:
-    - name: Download a Role from Ansible Galaxy
-      ansible.builtin.command:
-        cmd: "ansible-galaxy collection list"
+    - name: Gather VMware VM info
+      community.vmware.vmware_vm_info:
+        hostname: "your_vcenter_server"
+        username: "your_username"
+        password: "your_password"
+        validate_certs: no
+      delegate_to: localhost
+      register: vminfo
+
+    - name: Print VM info
+      debug:
+        var: vminfo
